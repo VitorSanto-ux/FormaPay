@@ -52,7 +52,7 @@ O banco de dados utilizado pelo sistema é o `formapay`. Sua estrutura é criada
 
 ## Instalação e execução
 
-Para instalar e executar o FormaPay, consulte o arquivo **INSTRUCOES_INSTALACAO.md**, disponível nos arquivos deste repositório.
+Para instalar e executar o FormaPay, consulte o arquivo **INSTRUCOES_INSTALACAO.pdf**, disponível nos arquivos deste repositório.
 
 Nele estão descritos os requisitos necessários, a configuração do ambiente, a preparação do banco de dados e o passo a passo para executar o sistema localmente.
 
