@@ -201,7 +201,7 @@ if ($usuarioLogado) {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#160d20">
     <title><?= $modo === 'cadastro' ? 'Criar conta' : 'Entrar' ?> | FormaPay</title>
-    <link rel="stylesheet" href="/FormaPay/View/Shared/style.css?v=18">
+    <link rel="stylesheet" href="/FormaPay/View/Shared/style.css?v=19">
 </head>
 
 <body>

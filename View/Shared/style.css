@@ -30,7 +30,7 @@ body {
       rgba(17, 13, 24, 0.85),
       rgba(36, 18, 47, 0.65)
     ),
-    url("/View/Shared/fundoforma.jpg");
+    url("fundoforma.jpg");
 
   background-size: cover;
   background-position: center;
