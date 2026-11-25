@@ -18,18 +18,32 @@ body {
   display: grid;
   grid-template-columns: 54% 46%;
 }
+
+
 .story {
   position: relative;
   overflow: hidden;
+
   background:
-    radial-gradient(ellipse at 88% 8%, #38225b 0, transparent 42%),
-    linear-gradient(145deg, #110d18, #24122f);
+    linear-gradient(
+      145deg,
+      rgba(17, 13, 24, 0.85),
+      rgba(36, 18, 47, 0.65)
+    ),
+    url("/View/Shared/fundoforma.jpg");
+
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+
   color: white;
   padding: 34px 5.2%;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
 }
+
+
 .story:before,
 .story:after {
   content: "";
