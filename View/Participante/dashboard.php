@@ -44,7 +44,7 @@ $saldoColetivo = (float) $resumoColetivo['saldo']; ?>
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="theme-color" content="#100d16">
     <title>Meu espaço | FormaPay</title>
-    <link rel="stylesheet" href="/FormaPay/View/Shared/style.css?v=17">
+    <link rel="stylesheet" href="/FormaPay/View/Shared/style.css?v=18">
 </head>
 
 <body class="participant-portal">
