@@ -4,7 +4,8 @@ $primeiroNome = explode(' ', $nome)[0];
 $iniciais = strtoupper(substr($primeiroNome, 0, 1) . (isset(explode(' ', $nome)[1]) ? substr(explode(' ', $nome)[1], 0, 1) : ''));
 $parcelasAtuais = $parcelasAtuais ?? [];
 $listaMovimentacoes = $listaMovimentacoes ?? [];
-$totalPago = array_sum(array_column($parcelasAtuais, 'pago'));
+$movimentacoesValidas = array_filter($listaMovimentacoes, static fn($m) => ($m['tipo'] ?? '') === 'receita' && empty($m['estorno_de']));
+$totalPago = array_sum(array_map(static fn($m) => (float) $m['valor'], $movimentacoesValidas));
 $proxima = null;
 foreach ($parcelasAtuais as $parcela) {
     if ((float) $parcela['pago'] + 0.001 < (float) $parcela['valor']) {
@@ -12,7 +13,7 @@ foreach ($parcelasAtuais as $parcela) {
         break;
     }
 }
-$pagamentos = array_map(static fn($m) => [$m['descricao'], $m['participante'] ?? '', $m['categoria'] ?? 'Contribuição', date('d M. Y', strtotime($m['data_movimento'])), strtoupper($m['meio']), '+ R$ ' . number_format((float) $m['valor'], 2, ',', '.')], array_filter($listaMovimentacoes, static fn($m) => $m['tipo'] === 'receita'));
+$pagamentos = array_map(static fn($m) => [$m['descricao'], $m['participante'] ?? '', $m['categoria'] ?? 'Contribuição', date('d M. Y', strtotime($m['data_movimento'])), strtoupper($m['meio']), '+ R$ ' . number_format((float) $m['valor'], 2, ',', '.')], $movimentacoesValidas);
 $notificacoes = [];
 if (!empty($erro))
     $notificacoes[] = ['tipo' => 'erro', 'titulo' => 'Não foi possível concluir', 'mensagem' => $erro];
