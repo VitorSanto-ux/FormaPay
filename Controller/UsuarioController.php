@@ -8,7 +8,6 @@ class UsuarioController
     {
     }
 
-<<<<<<< HEAD
     public function cadastrar(string $nome, string $email, string $senha, string $perfil, ?string $foto = null): int
     {
         if (mb_strlen(trim($nome)) < 2)
@@ -57,12 +56,4 @@ class UsuarioController
     {
         return $this->usuarioModel->deletar($id);
     }
-=======
-    public function listar() {
-        $usuarios = $this->usuarioModel->buscarTodos();
-        return $usuarios;
-    }
-
-    
->>>>>>> 74caf59a8c1a251607cfc40c991c09a76ea84202
 }
