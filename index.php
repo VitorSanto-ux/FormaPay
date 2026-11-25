@@ -210,7 +210,7 @@ if ($usuarioLogado) {
             <header class="brand">
                 <img class="brand-image" src="/FormaPay/View/Shared/logo-formapay.png" alt="Logo FormaPay">
                 <div><strong>Forma<span>Pay</span></strong><small>FORMATURA EM DIA</small></div>
-                <div class="secure">♧ &nbsp; Ambiente protegido</div>
+                
             </header>
             <div class="story-copy">
                 <p class="eyebrow">CONTAS ORGANIZADAS</p>
@@ -227,8 +227,7 @@ if ($usuarioLogado) {
                 </div>
             </div>
             <footer><b class="year">26</b>
-                <div><b>Formandos 2026</b><small>Juntos desde o 2º ano</small></div><small class="credit">FormaPay ·
-                    Projeto acadêmico 2026</small>
+                <div><b>Formandos 2026</b><small>Juntos desde o 2º ano</small></div>
             </footer>
         </section>
         <section class="form-side">
