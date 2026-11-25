@@ -1,10 +1,72 @@
-<?php $iniciais=strtoupper(substr($usuarioAtual['nome'],0,1)); ?>
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Configurações | FormaPay</title><link rel="stylesheet" href="/FormaPay/View/Shared/style.css?v=11"></head><body class="dashboard">
-<aside class="sidebar"><a class="dash-brand" href="?pagina=dashboard"><span class="dash-logo">♧</span><span><b>Forma<span>Pay</span></b><small>FORMATURA EM DIA</small></span></a><div class="side-caption">ESPAÇO DA TURMA</div><button class="cohort"><b>26</b><span><strong><?= e($coorteAtual['nome']) ?></strong><small>Coorte ativa</small></span><span>⌄</span></button><div class="side-caption">GESTÃO</div><nav class="side-nav"><a href="?pagina=dashboard"><i>▦</i>Visão geral</a><a href="?pagina=movimentacoes"><i>▣</i>Movimentações</a><a href="?pagina=participantes"><i>♙</i>Participantes</a><a href="?pagina=relatorios"><i>▤</i>Prestação de contas</a></nav><div class="side-caption">CONFIGURAÇÕES</div><nav class="side-nav"><a class="selected" href="?pagina=configuracoes"><i>⚙</i>Configurações</a></nav><div class="profile"><span class="avatar"><?= e($iniciais) ?></span><span><b><?= e($usuarioAtual['nome']) ?></b><small>Comissão</small></span></div></aside>
-<header class="topbar"><span>Configurações da coorte e da conta</span><a href="?pagina=dashboard">Voltar ao painel</a></header><main class="dash-main settings-main"><p class="eyebrow">SISTEMA</p><h1>Configurações</h1><p class="settings-intro">Atualize os dados da turma e seu perfil.</p><?php if(isset($_GET['salvo'])||isset($_GET['perfil'])):?><div class="notice success">Alterações salvas com sucesso.</div><?php endif ?>
-<div class="settings-grid"><section class="panel settings-card"><h2>Dados da coorte</h2><p>Identificação e regras gerais de contribuição.</p><form method="post"><input type="hidden" name="csrf" value="<?= e($_SESSION['csrf']) ?>"><input type="hidden" name="acao" value="salvar_coorte"><label>Nome da turma<input name="nome" value="<?= e($coorteAtual['nome']) ?>" required></label><label>Meta da formatura (R$)<input name="meta" type="number" min="1" step="0.01" value="<?= e((string)$coorteAtual['meta']) ?>" required></label><label>Dia de vencimento mensal<input name="vencimento_dia" type="number" min="1" max="28" value="<?= (int)$coorteAtual['vencimento_dia'] ?>" required></label><button class="primary-action">Salvar coorte</button></form><div class="years-list"><b>Histórico escolar associado</b><span>2º ano · 2025</span><span>3º ano · 2026</span></div></section>
-<section class="panel settings-card"><h2>Meu perfil</h2><p>Dados da conta da comissão.</p><form method="post" enctype="multipart/form-data"><input type="hidden" name="csrf" value="<?= e($_SESSION['csrf']) ?>"><input type="hidden" name="acao" value="salvar_perfil"><div class="profile-preview"><?php if(!empty($usuarioAtual['foto_perfil'])):?><img src="<?= e($usuarioAtual['foto_perfil']) ?>" alt="Foto atual"><?php else:?><span class="avatar"><?= e($iniciais) ?></span><?php endif?><span>Foto atual · JPG, PNG ou WEBP até 2 MB</span></div><div class="upload-preview" id="photo-preview" hidden><img alt="Prévia da nova foto"><span>Prévia da nova foto</span></div><label>Nome completo<input name="nome" value="<?= e($usuarioAtual['nome']) ?>" required maxlength="120"></label><label>E-mail<input name="email" type="email" value="<?= e($usuarioAtual['email']) ?>" required maxlength="190"></label><label>Alterar foto de perfil<input id="foto_perfil" name="foto_perfil" type="file" accept="image/png,image/jpeg,image/webp"></label><button class="primary-action">Salvar perfil</button></form></section></div>
-</main><script>document.getElementById('foto_perfil').addEventListener('change',e=>{const file=e.target.files[0],box=document.getElementById('photo-preview');if(!file){box.hidden=true;return}const reader=new FileReader();reader.onload=()=>{box.querySelector('img').src=reader.result;box.hidden=false};reader.readAsDataURL(file)});</script></body></html>
+<?php $iniciais = strtoupper(substr($usuarioAtual['nome'], 0, 1)); ?>
+<!doctype html>
+<html lang="pt-BR">
 
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Configurações | FormaPay</title>
+    <link rel="stylesheet" href="/FormaPay/View/Shared/style.css?v=17">
+</head>
 
+<body class="dashboard">
+    <aside class="sidebar"><a class="dash-brand" href="?pagina=dashboard"><img class="dash-logo-img" src="/FormaPay/View/Shared/logo-formapay.png" alt=""><span><b>Forma<span>Pay</span></b><small>FORMATURA EM DIA</small></span></a>
+        <div class="side-caption">ESPAÇO DA TURMA</div><button
+            class="cohort"><b>26</b><span><strong><?= e($coorteAtual['nome']) ?></strong><small>Coorte
+                    ativa</small></span><span>⌄</span></button>
+        <div class="side-caption">GESTÃO</div>
+        <nav class="side-nav"><a href="?pagina=dashboard"><i>▦</i>Visão geral</a><a
+                href="?pagina=movimentacoes"><i>▣</i>Movimentações</a><a
+                href="?pagina=participantes"><i>♙</i>Participantes</a><a href="?pagina=relatorios"><i>▤</i>Prestação de
+                contas</a></nav>
+        <div class="side-caption">CONFIGURAÇÕES</div>
+        <nav class="side-nav"><a class="selected" href="?pagina=configuracoes"><i>⚙</i>Configurações</a></nav>
+        <div class="profile"><span
+                class="avatar"><?= e($iniciais) ?></span><span><b><?= e($usuarioAtual['nome']) ?></b><small>Comissão</small></span>
+        </div>
+    </aside>
+    <header class="topbar"></header>
+    <main class="dash-main settings-main">
+        <p class="eyebrow">SISTEMA</p>
+        <h1>Configurações</h1>
+        <p class="settings-intro">Atualize os dados da turma e seu perfil.</p>
+        <?php if (isset($_GET['salvo']) || isset($_GET['perfil'])): ?>
+            <div class="notice success">Alterações salvas com sucesso.</div><?php endif ?>
+        <div class="settings-grid">
+            <section class="panel settings-card">
+                <h2>Dados da coorte</h2>
+                <p>Identificação e regras gerais de contribuição.</p>
+                <form method="post"><input type="hidden" name="csrf" value="<?= e($_SESSION['csrf']) ?>"><input
+                        type="hidden" name="acao" value="salvar_coorte"><label>Nome da turma<input name="nome"
+                            value="<?= e($coorteAtual['nome']) ?>" required></label><label>Meta da formatura (R$)<input
+                            name="meta" type="number" min="1" step="0.01" value="<?= e((string) $coorteAtual['meta']) ?>"
+                            required></label><label>Dia de vencimento mensal<input name="vencimento_dia" type="number"
+                            min="1" max="28" value="<?= (int) $coorteAtual['vencimento_dia'] ?>" required></label><button
+                        class="primary-action">Salvar coorte</button></form>
+                <div class="years-list"><b>Histórico escolar associado</b><span>2º ano · 2025</span><span>3º ano ·
+                        2026</span></div>
+            </section>
+            <section class="panel settings-card">
+                <h2>Meu perfil</h2>
+                <p>Dados da conta da comissão.</p>
+                <form method="post" enctype="multipart/form-data"><input type="hidden" name="csrf"
+                        value="<?= e($_SESSION['csrf']) ?>"><input type="hidden" name="acao" value="salvar_perfil">
+                    <div class="profile-preview"><?php if (!empty($usuarioAtual['foto_perfil'])): ?><img
+                                src="<?= e($usuarioAtual['foto_perfil']) ?>" alt="Foto atual"><?php else: ?><span
+                                class="avatar"><?= e($iniciais) ?></span><?php endif ?><span>Foto atual · JPG, PNG ou WEBP
+                            até 2 MB</span></div>
+                    <div class="upload-preview" id="photo-preview" hidden><img alt="Prévia da nova foto"><span>Prévia da
+                            nova foto</span></div><label>Nome completo<input name="nome"
+                            value="<?= e($usuarioAtual['nome']) ?>" required maxlength="120"></label><label>E-mail<input
+                            name="email" type="email" value="<?= e($usuarioAtual['email']) ?>" required
+                            maxlength="190"></label><label>Alterar foto de perfil<input id="foto_perfil"
+                            name="foto_perfil" type="file" accept="image/png,image/jpeg,image/webp"></label><button
+                        class="primary-action">Salvar perfil</button>
+                </form>
+            </section>
+        </div>
+    </main>
+    <script>document.getElementById('foto_perfil').addEventListener('change', e => { const file = e.target.files[0], box = document.getElementById('photo-preview'); if (!file) { box.hidden = true; return } const reader = new FileReader(); reader.onload = () => { box.querySelector('img').src = reader.result; box.hidden = false }; reader.readAsDataURL(file) });</script>
+</body>
 
+</html>
