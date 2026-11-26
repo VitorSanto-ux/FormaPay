@@ -1,145 +1,173 @@
 <?php
-$primeiroNome = explode(' ', trim($usuarioLogado['nome']))[0];
-$iniciais = strtoupper(substr($primeiroNome, 0, 1) . (isset(explode(' ', trim($usuarioLogado['nome']))[1]) ? substr(explode(' ', trim($usuarioLogado['nome']))[1], 0, 1) : ''));
-$resumo = $resumoAtual ?? ['receitas' => 0, 'despesas' => 0, 'saldo' => 0];
-$metaAtual = (float) $coorteAtual['meta'];
-$progressoAtual = progressoMetaColetiva((float) $resumo['saldo'], $metaAtual);
-$percentualAtual = $progressoAtual['percentual'];
-$participantes = array_map(static function ($p) {
-    $nome = $p['nome'];
-    $parts = explode(' ', $nome);
-    $ini = strtoupper(substr($parts[0], 0, 1) . (isset($parts[1]) ? substr($parts[1], 0, 1) : ''));
-    $prev = (float) $p['previsto'];
-    $paid = (float) $p['contribuido'];
-    $status = $paid <= 0 ? 'Pendente' : ($paid + 0.001 >= $prev ? 'Em dia' : 'Parcial');
-    return [$nome, $ini, $status, $paid, $prev, $p['email'] ?? '']; }, $listaParticipantes ?? []);
+$progresso = (float) ($resumoFinanceiro['progresso_percentual'] ?? 0);
+$metaValor = (float) ($resumoFinanceiro['meta'] ?? 0);
+$saldoValor = (float) ($resumoFinanceiro['saldo_atual'] ?? 0);
+$totalAtivos = count(array_filter($participantesCoorte, static fn(array $p): bool => ($p['status'] ?? '') === 'ativo'));
+$totalInativos = count($participantesCoorte) - $totalAtivos;
+$totalContribuidos = array_reduce($participantesCoorte, static fn(float $acc, array $p): float => $acc + (float) ($p['total_contribuido'] ?? 0), 0.0);
 ?>
-<!doctype html>
-<html lang="pt-BR">
-
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <meta name="theme-color" content="#100d16">
-    <title>Participantes | FormaPay</title>
-    <link rel="stylesheet" href="/FormaPay/View/Shared/style.css?v=17">
-</head>
-
-<body class="dashboard">
+<div class="dashboard">
     <aside class="sidebar">
-        <a class="dash-brand" href="?pagina=dashboard"><img class="dash-logo-img" src="/FormaPay/View/Shared/logo-formapay.png" alt=""><span><b>Forma<span>Pay</span></b><small>FORMATURA EM DIA</small></span></a>
-        <div class="side-caption">ESPAÇO DA TURMA</div><button class="cohort"><b>26</b><span><strong>Formandos
-                    2026</strong><small>3º ano · 32 participantes</small></span><span>⌄</span></button>
-        <div class="side-caption">GESTÃO</div>
-        <nav class="side-nav"><a href="?pagina=dashboard"><i>▦</i>Visão geral</a><a
-                href="?pagina=movimentacoes"><i>▣</i>Movimentações</a><a class="selected"
-                href="?pagina=participantes"><i>♙</i>Participantes <em>6</em></a><a
-                href="?pagina=relatorios"><i>▤</i>Prestação de contas</a></nav>
-        <div class="side-caption">CONFIGURAÇÕES</div>
-        <nav class="side-nav"><a href="?pagina=configuracoes"><i>⚙</i>Configurações</a></nav>
-        <div class="goal-mini"><span>✧</span><b> Rumo à formatura</b>
-            <p><?= $resumo['saldo'] < 0 ? 'Saldo negativo de R$ ' . number_format(abs((float) $resumo['saldo']), 2, ',', '.') : ($percentualAtual . '% da meta coletiva alcançada.') ?>
-            </p>
-            <div class="mini-track"><i style="width:<?= $percentualAtual ?>%"></i></div>
+        <a href="?rota=comissao_dashboard" class="dash-brand">
+            <img src="View/Shared/logo-formapay.png" alt="FormaPay" class="dash-logo-img">
+            <span>
+                <b>Forma<span>Pay</span></b>
+                <small>COMISSÃO DE FORMATURA</small>
+            </span>
+        </a>
+
+        <p class="side-caption">TURMA ATIVA</p>
+        <div class="cohort">
+            <b>🎓</b>
+            <span>
+                <strong><?= e($coorteAtual['nome'] ?? '') ?></strong>
+                <small>Código: <?= e($coorteAtual['codigo_convite'] ?? '') ?></small>
+            </span>
         </div>
-        <div class="profile"><span
-                class="avatar"><?= e($iniciais) ?></span><span><b><?= e($usuarioLogado['nome']) ?></b><small>Tesoureiro</small></span>
-            <form method="post"><input type="hidden" name="csrf" value="<?= e($_SESSION['csrf']) ?>"><button name="acao"
-                    value="sair" aria-label="Sair da conta">⇥</button></form>
+
+        <nav class="side-nav">
+            <a href="?rota=comissao_dashboard"><i>◈</i> Visão Geral</a>
+            <a href="?rota=comissao_movimentacoes"><i>⇄</i> Movimentações</a>
+            <a href="?rota=comissao_participantes" class="selected"><i>☺</i> Participantes <em><?= count($participantesCoorte) ?></em></a>
+            <a href="?rota=comissao_relatorios"><i>▤</i> Relatórios</a>
+            <a href="?rota=comissao_configuracoes"><i>⚙</i> Configurações</a>
+            <a href="?rota=comissao_onboarding"><i>+</i> Nova Turma</a>
+        </nav>
+
+        <div class="goal-mini">
+            <b>Meta da Turma (<?= e((string) $progresso) ?>%)</b>
+            <p><?= e(moeda($saldoValor)) ?> de <?= e(moeda($metaValor)) ?></p>
+            <div class="mini-track"><i style="width: <?= min(100, max(0, $progresso)) ?>%;"></i></div>
+        </div>
+
+        <div class="profile">
+            <span class="avatar"><?= e(iniciais((string) ($_SESSION['usuario_nome'] ?? 'CM'))) ?></span>
+            <span>
+                <b><?= e($_SESSION['usuario_nome'] ?? '') ?></b>
+                <small>Comissão</small>
+            </span>
+            <form method="POST" action="?rota=logout">
+                <?= csrf_field() ?>
+                <button type="submit" title="Sair">⎋</button>
+            </form>
         </div>
     </aside>
-    <header class="topbar"><label class="search"><span>⌕</span><input id="participant-search"
-                placeholder="Buscar participante ou lançamento..." aria-label="Buscar participante"></label>
-        <div class="top-right"><button class="icon-button" aria-label="Notificações">♧<i></i></button><span
-                class="top-divider"></span><span class="avatar"><?= e($iniciais) ?></span><span
-                class="top-user"><b><?= e($primeiroNome) ?></b><small>Comissão</small></span></div>
+
+    <header class="topbar">
+        <div class="search">
+            <span>⌕</span>
+            <input type="text" readonly value="Convite exclusivo da turma: <?= e($coorteAtual['codigo_convite'] ?? '') ?>">
+        </div>
+        <div class="top-right">
+            <span class="fp-code-pill">Código: <?= e($coorteAtual['codigo_convite'] ?? '') ?></span>
+            <div class="top-divider"></div>
+            <a href="?rota=usuario_editar" class="fp-btn-secondary">Minha Conta</a>
+        </div>
     </header>
-    <main class="dash-main participants-main">
+
+    <main class="dash-main">
+        <?php if (!empty($flashSucesso)): ?>
+            <div class="notice success"><?= e($flashSucesso) ?></div>
+        <?php endif; ?>
+        <?php if (!empty($flashErro)): ?>
+            <div class="notice error"><?= e($flashErro) ?></div>
+        <?php endif; ?>
+
         <div class="participants-heading">
             <div>
-                <p class="eyebrow">COORTE <?= e(mb_strtoupper($coorteAtual['nome'])) ?></p>
-                <h1>Participantes</h1>
-                <p>Adesões, situação financeira e histórico de participação.</p>
-            </div><button class="primary-action" onclick="document.getElementById('participant-modal').showModal()">♙
-                &nbsp; Adicionar participante</button>
+                <p class="eyebrow">MEMBROS VINCULADOS POR CÓDIGO</p>
+                <h1>Participantes — <?= e($coorteAtual['nome'] ?? '') ?></h1>
+                <p>Somente formandos que informaram o código <strong><?= e($coorteAtual['codigo_convite'] ?? '') ?></strong> entram nesta turma.</p>
+            </div>
         </div>
-        <?php if (isset($_GET['salvo'])): ?>
-            <div class="notice success">Participante adicionado e parcelas mensais geradas.</div><?php endif ?>
+
         <section class="participant-metrics">
-            <article><span class="metric-icon purple">♙</span>
-                <div><small>Participantes ativos</small><b><?= count($participantes) ?></b></div>
-            </article>
-            <article><span class="metric-icon green">✓</span>
-                <div><small>Em dia</small><b><?= count(array_filter($participantes, fn($p) => $p[2] === 'Em dia')) ?></b>
+            <article>
+                <div class="metric-icon green">☺</div>
+                <div>
+                    <small>Participantes Ativos</small>
+                    <b><?= $totalAtivos ?></b>
                 </div>
             </article>
-            <article><span class="metric-icon amber">▤</span>
-                <div><small>Com
-                        pendências</small><b><?= count(array_filter($participantes, fn($p) => $p[2] !== 'Em dia')) ?></b>
+            <article>
+                <div class="metric-icon amber">◔</div>
+                <div>
+                    <small>Inativos / Desistentes</small>
+                    <b><?= $totalInativos ?></b>
+                </div>
+            </article>
+            <article>
+                <div class="metric-icon purple">R$</div>
+                <div>
+                    <small>Contribuições Identificadas</small>
+                    <b><?= e(moeda($totalContribuidos)) ?></b>
                 </div>
             </article>
         </section>
+
         <section class="panel participant-panel">
             <div class="participant-panel-head">
                 <div>
-                    <h2>Participantes da coorte</h2>
-                    <p>Plano mensal · R$ 150,00 · vencimento dia 10</p>
-                </div><select id="status-filter" aria-label="Filtrar por situação">
-                    <option value="todas">Situação: todas</option>
-                    <option value="em-dia">Em dia</option>
-                    <option value="parcial">Parcial</option>
-                    <option value="pendente">Pendente</option>
-                </select>
+                    <h2>Formandos da Turma</h2>
+                    <p>Gestão de status exclusiva da coorte ativa</p>
+                </div>
             </div>
-            <div class="participant-grid" id="participant-grid">
-                <?php foreach ($participantes as [$nome, $sigla, $status, $contribuido, $previsto]):
-                    $percentual = (int) round($contribuido / $previsto * 100);
-                    $statusClass = $status === 'Em dia' ? 'up-to-date' : ($status === 'Parcial' ? 'partial' : 'pending');
-                    $statusKey = $status === 'Em dia' ? 'em-dia' : strtolower($status); ?>
-                    <article class="participant-card" data-status="<?= e($statusKey) ?>"
-                        data-name="<?= e(mb_strtolower($nome)) ?>">
-                        <div class="participant-card-top"><span class="participant-initials"><?= e($sigla) ?></span><span
-                                class="status-pill <?= $statusClass ?>"><?= e($status) ?></span></div>
-                        <h3><?= e($nome) ?></h3>
-                        <p class="joined">Participante desde fev. 2025</p>
-                        <div class="contribution-labels"><span><small>Contribuído</small><b>R$
-                                    <?= number_format($contribuido, 2, ',', '.') ?></b></span><span><small>Previsto</small><b>R$
-                                    <?= number_format($previsto, 2, ',', '.') ?></b></span></div>
-                        <div class="participant-progress"><i style="width:<?= $percentual ?>%"></i></div><a
-                            class="history-link" href="#historico" data-person="<?= e($nome) ?>">Ver histórico
-                            <span>›</span></a>
-                    </article><?php endforeach ?>
-            </div>
-            <div class="participant-empty" hidden>Nenhum participante encontrado para esse filtro.</div>
+
+            <?php if (empty($participantesCoorte)): ?>
+                <div class="participant-empty">
+                    Nenhum participante entrou nesta turma ainda. Compartilhe o código <strong><?= e($coorteAtual['codigo_convite'] ?? '') ?></strong> com os formandos.
+                </div>
+            <?php else: ?>
+                <div class="participant-grid">
+                    <?php foreach ($participantesCoorte as $part): ?>
+                        <?php
+                        $statusAtual = (string) ($part['status'] ?? 'ativo');
+                        $contrib = (float) ($part['total_contribuido'] ?? 0);
+                        $classePill = match ($statusAtual) {
+                            'ativo' => 'up-to-date',
+                            'inativo' => 'partial',
+                            default => 'pending',
+                        };
+                        ?>
+                        <article class="participant-card">
+                            <div class="participant-card-top">
+                                <span class="participant-initials"><?= e(iniciais((string) ($part['nome'] ?? 'PT'))) ?></span>
+                                <span class="status-pill <?= $classePill ?>"><?= e(ucfirst($statusAtual)) ?></span>
+                            </div>
+
+                            <h3><?= e($part['nome']) ?></h3>
+                            <p class="joined"><?= e($part['email'] ?? 'Sem e-mail') ?> • Desde <?= e($part['entrou_em']) ?></p>
+
+                            <div class="contribution-labels">
+                                <span>
+                                    <small>Total contribuído</small>
+                                    <b><?= e(moeda($contrib)) ?></b>
+                                </span>
+                                <span>
+                                    <small>Status</small>
+                                    <b><?= e(ucfirst($statusAtual)) ?></b>
+                                </span>
+                            </div>
+
+                            <div class="history-link">
+                                <form method="POST" action="?rota=comissao_participante_status" style="display:flex;gap:6px;width:100%;justify-content:flex-end;">
+                                    <?= csrf_field() ?>
+                                    <input type="hidden" name="participante_id" value="<?= (int) $part['participante_id'] ?>">
+                                    <?php if ($statusAtual !== 'ativo'): ?>
+                                        <button type="submit" name="status" value="ativo" class="fp-btn-secondary">Ativar</button>
+                                    <?php endif; ?>
+                                    <?php if ($statusAtual !== 'inativo'): ?>
+                                        <button type="submit" name="status" value="inativo" class="fp-btn-secondary">Inativar</button>
+                                    <?php endif; ?>
+                                    <?php if ($statusAtual !== 'desistente'): ?>
+                                        <button type="submit" name="status" value="desistente" class="fp-btn-danger-sm">Desistente</button>
+                                    <?php endif; ?>
+                                </form>
+                            </div>
+                        </article>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
         </section>
     </main>
-    <dialog id="participant-modal">
-        <form method="post" class="modal-card"><button type="button" class="modal-close"
-                onclick="this.closest('dialog').close()" aria-label="Fechar">×</button>
-            <p class="eyebrow">NOVA ADESÃO</p>
-            <h2>Adicionar participante</h2><input type="hidden" name="csrf" value="<?= e($_SESSION['csrf']) ?>"><input
-                type="hidden" name="acao" value="novo_participante"><label>Nome completo<input name="nome" required
-                    maxlength="120"></label><label>E-mail (opcional)<input name="email" type="email"
-                    maxlength="190"></label><label>Contribuição mensal<input name="valor" type="number" min="1"
-                    step="0.01" value="150.00" required></label><button class="primary-action">Salvar
-                participante</button>
-        </form>
-    </dialog>
-    <dialog id="history-modal">
-        <form method="dialog" class="modal-card"><button class="modal-close" aria-label="Fechar">×</button>
-            <p class="eyebrow">HISTÓRICO DE PARTICIPAÇÃO</p>
-            <h2 id="history-title">Participante</h2>
-            <p>Os detalhes de parcelas e pagamentos aparecerão aqui quando o histórico financeiro estiver conectado.</p>
-            <button class="primary-action">Fechar</button>
-        </form>
-    </dialog>
-    <script>
-        const cards = [...document.querySelectorAll('.participant-card')], search = document.getElementById('participant-search'), filter = document.getElementById('status-filter');
-        function filterCards() { let count = 0; cards.forEach(card => { const matchesStatus = filter.value === 'todas' || card.dataset.status === filter.value; const matchesSearch = card.dataset.name.includes(search.value.trim().toLocaleLowerCase('pt-BR')); card.hidden = !(matchesStatus && matchesSearch); if (!card.hidden) count++ }); document.querySelector('.participant-empty').hidden = count !== 0 }
-        filter.addEventListener('change', filterCards); search.addEventListener('input', filterCards);
-        document.querySelectorAll('.history-link').forEach(link => link.addEventListener('click', event => { event.preventDefault(); document.getElementById('history-title').textContent = link.dataset.person; document.getElementById('history-modal').showModal() }));
-        document.querySelector('.icon-button').addEventListener('click', () => alert('Você está em dia com as notificações.'));
-    </script>
-</body>
-
-</html>
+</div>

@@ -1,56 +1,84 @@
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cadastrar Usuário</title>
-</head>
-<body>
-    <img src="" alt="">
-    <form method="post">
-        <label for="nome">Nome: </label>
-        <input type="text" name="nome" required><br>
+<div class="layout">
+    <section class="story">
+        <div class="brand">
+            <img src="View/Shared/logo-formapay.png" alt="FormaPay" class="brand-image">
+            <div>
+                <strong>Forma<span>Pay</span></strong>
+                <small>GESTÃO DE FORMATURAS</small>
+            </div>
+            <span class="secure">Multi-Turma</span>
+        </div>
 
-        <label for="email">Email: </label>
-        <input type="email" name="email" required><br>
+        <div class="story-copy">
+            <p class="eyebrow">CADASTRO RÁPIDO E SEGURO</p>
+            <h1>Comece sua turma ou entre com <span>código único</span>.</h1>
+            <p class="intro">Comissões criam a turma com meta financeira e geram o código de convite. Participantes entram exclusivamente na turma correta.</p>
+        </div>
 
-        <label for="telefone">Telefone: </label>
-        <input type="text" name="telefone" required><br>
+        <footer>
+            <div class="year">FP</div>
+            <div>
+                <b>Proteção por Código de Turma</b>
+                <small>Nenhum formando cai por engano na formatura de outro curso ou ano</small>
+            </div>
+        </footer>
+    </section>
 
-        <label for="senha">Senha: </label>
-        <input type="password" name="senha" required><br>
+    <section class="form-side">
+        <div class="auth-box">
+            <div class="tabs">
+                <a href="?rota=login">Entrar</a>
+                <a href="?rota=cadastrar" class="active">Criar conta</a>
+            </div>
 
-        <label for="turma">Turma: </label>
-        <select name="turma" required>
-            <option value="">Selecione uma turma</option>
-            <option value="9º Ano">9º Ano</option>
-            <option value="3º Ano">3º Ano</option>
-        </select>
+            <p class="eyebrow">NOVO ACESSO</p>
+            <h2>Criar conta</h2>
+            <p class="subhead">Selecione seu perfil para iniciar.</p>
 
-        <label for="rm">RM: </label>
-        <input type="number" name="rm" required><br>
+            <?php if (!empty($flashErro)): ?>
+                <div class="notice error"><?= e($flashErro) ?></div>
+            <?php endif; ?>
 
-        <input type="submit" value="Cadastrar">
-        <button type="button" onclick="window.location.href='../../index.php'">Voltar ao Início</button>
-    </form>
-</body>
-</html>
+            <form method="POST" action="?rota=cadastrar" class="auth-form">
+                <?= csrf_field() ?>
 
-<?php
-require_once "C:/Turma2/xampp/htdocs/FormaPay/DB/Database.php";
-require_once "C:/Turma2/xampp/htdocs/FormaPay/Controller/UsuarioController.php";
+                <label for="nome">Nome completo</label>
+                <div class="field">
+                    <span>👤</span>
+                    <input type="text" id="nome" name="nome" required minlength="3" placeholder="Ex.: Rafael Silva">
+                </div>
 
-$UsuarioController = new UsuarioController($pdo);
+                <label for="email">E-mail</label>
+                <div class="field">
+                    <span>@</span>
+                    <input type="email" id="email" name="email" required placeholder="rafael@email.com">
+                </div>
 
-if($_SERVER['REQUEST_METHOD'] == 'POST'){
-    $nome = $_POST['nome'];
-    $email = $_POST['email'];
-    $telefone = $_POST['telefone'];
-    $senha = $_POST['senha'];
-    $turma = $_POST['turma'];
-    $rm = $_POST['rm'];
+                <label for="perfil">Perfil de acesso</label>
+                <div class="field">
+                    <span>★</span>
+                    <select id="perfil" name="perfil" required>
+                        <option value="participante">Participante (tenho código da turma)</option>
+                        <option value="comissao">Comissão de Formatura (criar turma e meta)</option>
+                    </select>
+                </div>
 
-    $UsuarioController->cadastrar($nome, $email, $senha, $telefone, $turma, $rm);
-    header("Location: ../../index.php");
-}
-?>
+                <label for="senha">Senha (mínimo 6 caracteres)</label>
+                <div class="field">
+                    <span>••</span>
+                    <input type="password" id="senha" name="senha" required minlength="6" placeholder="Crie uma senha">
+                </div>
+
+                <label for="confirmar_senha">Confirmar senha</label>
+                <div class="field">
+                    <span>••</span>
+                    <input type="password" id="confirmar_senha" name="confirmar_senha" required minlength="6" placeholder="Repita a senha">
+                </div>
+
+                <button type="submit" class="button">Criar conta <span>→</span></button>
+            </form>
+
+            <p class="help">Já possui cadastro? <a href="?rota=login">Voltar para login</a></p>
+        </div>
+    </section>
+</div>

@@ -1,103 +1,168 @@
 <?php
 declare(strict_types=1);
 
+namespace FormaPay\Model;
+
+use FormaPay\DB\Database;
+use PDO;
+use RuntimeException;
+
 class UsuarioModel
 {
-    public function __construct(private PDO $pdo)
+    private PDO $db;
+
+    public function __construct(?PDO $db = null)
     {
+        $this->db = $db ?? Database::getConnection();
     }
 
-    public function cadastrar(string $nome, string $email, string $senha, string $perfil, ?string $foto = null): int
+    public function buscarPorEmail(string $email): ?array
     {
-        $stmt = $this->pdo->prepare('INSERT INTO usuarios (nome, email, senha, perfil, foto_perfil) VALUES (:nome, :email, :senha, :perfil, :foto)');
-        $stmt->execute(['nome' => $nome, 'email' => mb_strtolower($email), 'senha' => password_hash($senha, PASSWORD_DEFAULT), 'perfil' => $perfil, 'foto' => $foto]);
-        $id = (int) $this->pdo->lastInsertId();
-        if ($perfil === 'participante') {
-            $coorte = (int) $this->pdo->query('SELECT id FROM coortes ORDER BY id LIMIT 1')->fetchColumn();
-            if ($coorte) {
-                $existing = $this->pdo->prepare('SELECT id FROM participantes WHERE coorte_id=? AND email=? LIMIT 1');
-                $existing->execute([$coorte, mb_strtolower($email)]);
-                $pid = (int) ($existing->fetchColumn() ?: 0);
-                if ($pid) {
-                    $this->pdo->prepare('UPDATE participantes SET usuario_id=?,nome=?,status=\'ativo\' WHERE id=?')->execute([$id, $nome, $pid]);
-                } else {
-                    $this->pdo->prepare("INSERT INTO participantes (coorte_id,usuario_id,nome,email,status,entrou_em) VALUES (?,?,?,?,'ativo',CURDATE())")->execute([$coorte, $id, $nome, mb_strtolower($email)]);
-                    $pid = (int) $this->pdo->lastInsertId();
-                }
-                $plan = $this->pdo->prepare('SELECT id,valor FROM planos_contribuicao WHERE coorte_id=? AND ativo=1 ORDER BY id LIMIT 1');
-                $plan->execute([$coorte]);
-                $pl = $plan->fetch();
-                if (!$pl) {
-                    $this->pdo->prepare("INSERT INTO planos_contribuicao (coorte_id,valor,periodicidade,vigencia_inicio) VALUES (?,150,'mensal',CURDATE())")->execute([$coorte]);
-                    $pl = ['id' => (int) $this->pdo->lastInsertId(), 'valor' => 150];
-                }
-                $due = $this->pdo->prepare('INSERT INTO parcelas_previstas (participante_id,plano_id,competencia,vencimento,valor) VALUES (?,?,?,?,?)');
-                for ($i = 1; $i <= 11; $i++) {
-                    $d = (new DateTimeImmutable('first day of next month'))->modify('+' . ($i - 1) . ' months');
-                    $dueDate = $d->setDate((int) $d->format('Y'), (int) $d->format('m'), 10);
-                    $due->execute([$pid, $pl['id'], $d->format('Y-m-d'), $dueDate->format('Y-m-d'), $pl['valor']]);
-                }
-            }
+        $sql = 'SELECT id, nome, email, senha, perfil, foto_perfil, coorte_ativa_id, criado_em
+                FROM usuarios
+                WHERE email = :email
+                LIMIT 1';
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([':email' => mb_strtolower(trim($email))]);
+        $row = $stmt->fetch();
+
+        return $row ?: null;
+    }
+
+    public function buscarPorId(int $id): ?array
+    {
+        $sql = 'SELECT id, nome, email, senha, perfil, foto_perfil, coorte_ativa_id, criado_em
+                FROM usuarios
+                WHERE id = :id
+                LIMIT 1';
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([':id' => $id]);
+        $row = $stmt->fetch();
+
+        return $row ?: null;
+    }
+
+    public function cadastrar(string $nome, string $email, string $senhaPlana, string $perfil = 'participante'): int
+    {
+        $perfilSeguro = in_array($perfil, ['comissao', 'participante'], true) ? $perfil : 'participante';
+        $hash = password_hash($senhaPlana, PASSWORD_DEFAULT);
+
+        if ($hash === false) {
+            throw new RuntimeException('Falha ao gerar hash seguro da senha.');
         }
-        return $id;
+
+        $sql = 'INSERT INTO usuarios (nome, email, senha, perfil, coorte_ativa_id)
+                VALUES (:nome, :email, :senha, :perfil, NULL)';
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([
+            ':nome' => trim($nome),
+            ':email' => mb_strtolower(trim($email)),
+            ':senha' => $hash,
+            ':perfil' => $perfilSeguro,
+        ]);
+
+        return (int) $this->db->lastInsertId();
     }
 
-    public function autenticar(string $email, string $senha): ?array
+    public function atualizarPerfil(int $usuarioId, string $nome, string $email, ?string $novaSenha = null, ?string $fotoPerfil = null): bool
     {
-        $stmt = $this->pdo->prepare('SELECT id, nome, email, senha, perfil, criado_em FROM usuarios WHERE email = :email LIMIT 1');
-        $stmt->execute(['email' => mb_strtolower($email)]);
-        $usuario = $stmt->fetch();
-        if (!$usuario || !password_verify($senha, $usuario['senha']))
-            return null;
-        unset($usuario['senha']);
-        return $usuario;
+        $campos = ['nome = :nome', 'email = :email'];
+        $params = [
+            ':id' => $usuarioId,
+            ':nome' => trim($nome),
+            ':email' => mb_strtolower(trim($email)),
+        ];
+
+        if ($novaSenha !== null && $novaSenha !== '') {
+            $hash = password_hash($novaSenha, PASSWORD_DEFAULT);
+            if ($hash === false) {
+                throw new RuntimeException('Falha ao atualizar senha.');
+            }
+            $campos[] = 'senha = :senha';
+            $params[':senha'] = $hash;
+        }
+
+        if ($fotoPerfil !== null) {
+            $campos[] = 'foto_perfil = :foto_perfil';
+            $params[':foto_perfil'] = $fotoPerfil;
+        }
+
+        $this->db->beginTransaction();
+        try {
+            $sql = 'UPDATE usuarios SET ' . implode(', ', $campos) . ' WHERE id = :id';
+            $stmt = $this->db->prepare($sql);
+            $ok = $stmt->execute($params);
+
+            $sqlPart = 'UPDATE participantes SET nome = :nome, email = :email WHERE usuario_id = :usuario_id';
+            $stmtPart = $this->db->prepare($sqlPart);
+            $stmtPart->execute([
+                ':nome' => trim($nome),
+                ':email' => mb_strtolower(trim($email)),
+                ':usuario_id' => $usuarioId,
+            ]);
+
+            $this->db->commit();
+            return $ok;
+        } catch (\Throwable $e) {
+            $this->db->rollBack();
+            throw $e;
+        }
     }
 
-    public function buscarTodos(): array
+    public function definirCoorteAtiva(int $usuarioId, ?int $coorteId): bool
     {
-        return $this->pdo->query('SELECT id, nome, email, criado_em FROM usuarios ORDER BY nome')->fetchAll();
+        $sql = 'UPDATE usuarios SET coorte_ativa_id = :coorte_id WHERE id = :usuario_id';
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindValue(':usuario_id', $usuarioId, PDO::PARAM_INT);
+        if ($coorteId === null) {
+            $stmt->bindValue(':coorte_id', null, PDO::PARAM_NULL);
+        } else {
+            $stmt->bindValue(':coorte_id', $coorteId, PDO::PARAM_INT);
+        }
+
+        return $stmt->execute();
     }
 
-    public function buscarUsuario(int $id): ?array
+    public function listarParticipantesDaCoorte(int $coorteId): array
     {
-        $stmt = $this->pdo->prepare('SELECT id, nome, email, criado_em FROM usuarios WHERE id = :id');
-        $stmt->execute(['id' => $id]);
-        return $stmt->fetch() ?: null;
+        $sql = 'SELECT p.id AS participante_id, p.coorte_id, p.usuario_id, p.nome, p.email, p.status, p.entrou_em, p.saiu_em,
+                       u.foto_perfil,
+                       COALESCE(SUM(CASE WHEN m.tipo = "receita" AND m.estorno_de IS NULL THEN m.valor ELSE 0 END), 0) AS total_contribuido
+                FROM participantes p
+                LEFT JOIN usuarios u ON u.id = p.usuario_id
+                LEFT JOIN movimentacoes m ON m.participante_id = p.id AND m.coorte_id = p.coorte_id
+                WHERE p.coorte_id = :coorte_id
+                GROUP BY p.id, p.coorte_id, p.usuario_id, p.nome, p.email, p.status, p.entrou_em, p.saiu_em, u.foto_perfil
+                ORDER BY p.nome ASC';
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([':coorte_id' => $coorteId]);
+
+        return $stmt->fetchAll();
     }
 
-    public function editar(int $id, string $nome, string $email): bool
+    public function alterarStatusParticipante(int $coorteId, int $participanteId, string $status): bool
     {
-        $stmt = $this->pdo->prepare('UPDATE usuarios SET nome = :nome, email = :email WHERE id = :id');
-        return $stmt->execute(['nome' => $nome, 'email' => mb_strtolower($email), 'id' => $id]);
-    }
+        if (!in_array($status, ['ativo', 'inativo', 'desistente'], true)) {
+            return false;
+        }
 
-    public function deletar(int $id): bool
-    {
-        $stmt = $this->pdo->prepare('DELETE FROM usuarios WHERE id = :id');
-        return $stmt->execute(['id' => $id]);
-    }
+        $saiuEm = $status === 'ativo' ? null : date('Y-m-d');
+        $sql = 'UPDATE participantes
+                SET status = :status,
+                    saiu_em = :saiu_em
+                WHERE id = :id
+                  AND coorte_id = :coorte_id';
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindValue(':status', $status);
+        if ($saiuEm === null) {
+            $stmt->bindValue(':saiu_em', null, PDO::PARAM_NULL);
+        } else {
+            $stmt->bindValue(':saiu_em', $saiuEm);
+        }
+        $stmt->bindValue(':id', $participanteId, PDO::PARAM_INT);
+        $stmt->bindValue(':coorte_id', $coorteId, PDO::PARAM_INT);
+        $stmt->execute();
 
-    public function emailExiste(string $email): bool
-    {
-        $stmt = $this->pdo->prepare('SELECT 1 FROM usuarios WHERE email = :email LIMIT 1');
-        $stmt->execute(['email' => mb_strtolower($email)]);
-        return (bool) $stmt->fetchColumn();
-    }
-
-    public function atualizarPerfil(int $id, string $nome, string $email, ?string $foto = null): void
-    {
-        $sql = 'UPDATE usuarios SET nome=?,email=?' . ($foto !== null ? ',foto_perfil=?' : '') . ' WHERE id=?';
-        $args = [$nome, mb_strtolower($email)];
-        if ($foto !== null)
-            $args[] = $foto;
-        $args[] = $id;
-        $this->pdo->prepare($sql)->execute($args);
-    }
-
-    public function porId(int $id): ?array
-    {
-        $st = $this->pdo->prepare('SELECT id,nome,email,perfil,foto_perfil FROM usuarios WHERE id=?');
-        $st->execute([$id]);
-        return $st->fetch() ?: null;
+        return $stmt->rowCount() > 0;
     }
 }

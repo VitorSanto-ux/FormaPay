@@ -1,209 +1,273 @@
 <?php
-$primeiroNome = explode(' ', trim($usuarioLogado['nome']))[0];
-$iniciais = strtoupper(substr($primeiroNome, 0, 1) . (isset(explode(' ', trim($usuarioLogado['nome']))[1]) ? substr(explode(' ', trim($usuarioLogado['nome']))[1], 0, 1) : ''));
-$resumoAtual = $resumoAtual ?? ['receitas' => 0, 'despesas' => 0, 'saldo' => 0, 'participantes' => 0, 'ativos' => 0];
-$metaAtual = (float) $coorteAtual['meta'];
-$progressoMetaAtual = progressoMetaColetiva((float) $resumoAtual['saldo'], $metaAtual);
-$percentualAtual = $progressoMetaAtual['percentual'];
-$evolucaoAtual = $evolucaoAtual ?? [];
-$chartMax = max(1000, ceil(max(array_merge([0], array_column($evolucaoAtual, 'receita'), array_column($evolucaoAtual, 'despesa'))) / 1000) * 1000);
-$recentes = array_slice($listaMovimentacoes ?? [], 0, 5);
+$progresso = (float) ($resumoFinanceiro['progresso_percentual'] ?? 0);
+$metaValor = (float) ($resumoFinanceiro['meta'] ?? 0);
+$saldoValor = (float) ($resumoFinanceiro['saldo_atual'] ?? 0);
+$receitasValor = (float) ($resumoFinanceiro['total_receitas'] ?? 0);
+$despesasValor = (float) ($resumoFinanceiro['total_despesas'] ?? 0);
+$progressoGrafico = min(100, max(0, $progresso));
+$resumoMensalPorMes = [];
+foreach (($resumoMensal ?? []) as $linhaMensal) {
+    $resumoMensalPorMes[$linhaMensal['mes']] = $linhaMensal;
+}
+$nomesMeses = [1 => 'jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+$mesAtual = new DateTimeImmutable('first day of this month');
+$mesesGrafico = [];
+$maiorMovimentoMensal = 0.0;
+for ($deslocamento = 5; $deslocamento >= 0; $deslocamento--) {
+    $periodo = $mesAtual->modify('-' . $deslocamento . ' months');
+    $chaveMes = $periodo->format('Y-m');
+    $linhaMensal = $resumoMensalPorMes[$chaveMes] ?? [];
+    $receitasMes = (float) ($linhaMensal['total_receitas'] ?? 0);
+    $despesasMes = (float) ($linhaMensal['total_despesas'] ?? 0);
+    $mesesGrafico[] = [
+        'nome' => $nomesMeses[(int) $periodo->format('n')],
+        'receitas' => $receitasMes,
+        'despesas' => $despesasMes,
+    ];
+    $maiorMovimentoMensal = max($maiorMovimentoMensal, $receitasMes, $despesasMes);
+}
+$escalaGrafico = max(1, $maiorMovimentoMensal);
 ?>
-<!doctype html>
-<html lang="pt-BR">
-
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#100d16">
-    <title>Visão geral | FormaPay</title>
-    <link rel="stylesheet" href="/FormaPay/View/Shared/style.css?v=17">
-</head>
-
-<body class="dashboard">
+<div class="dashboard">
     <aside class="sidebar">
-        <a class="dash-brand" href="?pagina=dashboard"><img class="dash-logo-img" src="/FormaPay/View/Shared/logo-formapay.png" alt=""><span><b>Forma<span>Pay</span></b><small>FORMATURA EM DIA</small></span></a>
-        <div class="side-caption">ESPAÇO DA TURMA</div><button class="cohort"><b>26</b><span><strong>Formandos
-                    2026</strong><small>3º ano · 32 participantes</small></span><span class="chevron">⌄</span></button>
-        <div class="side-caption">GESTÃO</div>
-        <nav class="side-nav"><a class="selected" href="?pagina=dashboard"><i>▦</i>Visão geral</a><a
-                href="?pagina=movimentacoes"><i>▣</i>Movimentações</a><a
-                href="?pagina=participantes"><i>♙</i>Participantes <em>6</em></a><a
-                href="?pagina=relatorios"><i>▤</i>Prestação de contas</a></nav>
-        <div class="side-caption config-caption">CONFIGURAÇÕES</div>
-        <nav class="side-nav"><a href="?pagina=configuracoes"><i>⚙</i>Configurações</a></nav>
-        <div class="goal-mini"><span class="sparkle">✧</span><b> Rumo à formatura</b>
-            <p><?= $resumoAtual['saldo'] < 0 ? 'Saldo negativo de R$ ' . number_format(abs($resumoAtual['saldo']), 2, ',', '.') : ($percentualAtual . '% da meta coletiva alcançada.') ?>
-            </p>
-            <div class="mini-track"><i style="width:<?= $percentualAtual ?>%"></i></div>
+        <a href="?rota=comissao_dashboard" class="dash-brand">
+            <img src="View/Shared/logo-formapay.png" alt="FormaPay" class="dash-logo-img">
+            <span>
+                <b>Forma<span>Pay</span></b>
+                <small>COMISSÃO DE FORMATURA</small>
+            </span>
+        </a>
+
+        <p class="side-caption">TURMA ATIVA</p>
+        <div class="cohort">
+            <b>🎓</b>
+            <span>
+                <strong><?= e($coorteAtual['nome'] ?? '') ?></strong>
+                <small>Código: <?= e($coorteAtual['codigo_convite'] ?? '') ?></small>
+            </span>
         </div>
-        <div class="profile"><span
-                class="avatar"><?= e($iniciais) ?></span><span><b><?= e($usuarioLogado['nome']) ?></b><small>Comissão</small></span>
-            <form method="post"><input type="hidden" name="csrf" value="<?= e($_SESSION['csrf']) ?>"><button name="acao"
-                    value="sair" title="Sair" aria-label="Sair da conta">⇥</button></form>
+
+        <nav class="side-nav">
+            <a href="?rota=comissao_dashboard" class="selected"><i>◈</i> Visão Geral</a>
+            <a href="?rota=comissao_movimentacoes"><i>⇄</i> Movimentações</a>
+            <a href="?rota=comissao_participantes"><i>☺</i> Participantes <em><?= (int) ($resumoFinanceiro['total_participantes'] ?? 0) ?></em></a>
+            <a href="?rota=comissao_relatorios"><i>▤</i> Relatórios</a>
+            <a href="?rota=comissao_configuracoes"><i>⚙</i> Configurações</a>
+            <a href="?rota=comissao_onboarding"><i>+</i> Nova Turma</a>
+        </nav>
+
+        <div class="goal-mini">
+            <b>Meta da Turma (<?= e((string) $progresso) ?>%)</b>
+            <p><?= e(moeda($saldoValor)) ?> de <?= e(moeda($metaValor)) ?></p>
+            <div class="mini-track"><i style="width: <?= min(100, max(0, $progresso)) ?>%;"></i></div>
+        </div>
+
+        <div class="profile">
+            <span class="avatar"><?= e(iniciais((string) ($_SESSION['usuario_nome'] ?? 'CM'))) ?></span>
+            <span>
+                <b><?= e($_SESSION['usuario_nome'] ?? '') ?></b>
+                <small>Comissão</small>
+            </span>
+            <form method="POST" action="?rota=logout">
+                <?= csrf_field() ?>
+                <button type="submit" title="Sair">⎋</button>
+            </form>
         </div>
     </aside>
-    <header class="topbar"><label class="search"><span>⌕</span><input id="global-search"
-                placeholder="Buscar participante ou lançamento..."
-                aria-label="Buscar participante ou lançamento"></label>
-        <div class="top-right"><button class="icon-button" aria-label="Notificações">♧<i></i></button><span
-                class="top-divider"></span><span class="avatar"><?= e($iniciais) ?></span><span
-                class="top-user"><b><?= e($primeiroNome) ?></b><small>Comissão</small></span></div>
+
+    <header class="topbar">
+        <div class="search">
+            <span>⌕</span>
+            <input type="text" readonly value="Código de convite: <?= e($coorteAtual['codigo_convite'] ?? '') ?>">
+        </div>
+        <div class="top-right">
+            <button type="button" class="fp-btn-secondary" onclick="navigator.clipboard?.writeText('<?= e($coorteAtual['codigo_convite'] ?? '') ?>')">
+                Copiar Código: <strong><?= e($coorteAtual['codigo_convite'] ?? '') ?></strong>
+            </button>
+            <div class="top-divider"></div>
+            <a href="?rota=usuario_editar" class="fp-btn-secondary">Minha Conta</a>
+        </div>
     </header>
+
     <main class="dash-main">
+        <?php if (!empty($flashSucesso)): ?>
+            <div class="notice success"><?= e($flashSucesso) ?></div>
+        <?php endif; ?>
+        <?php if (!empty($flashErro)): ?>
+            <div class="notice error"><?= e($flashErro) ?></div>
+        <?php endif; ?>
+
         <div class="dash-title">
             <div>
-                <p class="eyebrow">VISÃO GERAL</p>
-                <h1>Olá, <?= e($primeiroNome) ?>. <span>Vamos organizar?</span></h1>
-                <p>Acompanhe a saúde financeira da turma em um só lugar.</p>
+                <p class="eyebrow">PAINEL FINANCEIRO ISOLADO POR TURMA</p>
+                <h1><?= e($coorteAtual['nome'] ?? '') ?> <span>• <?= e((string) ($coorteAtual['ano_formatura'] ?? 'Formatura')) ?></span></h1>
+                <p>Compartilhe o código <strong><?= e($coorteAtual['codigo_convite'] ?? '') ?></strong> apenas com os participantes desta turma.</p>
             </div>
-            <div class="dash-actions"><button class="select-year">▦ &nbsp; 3º ano · 2026 &nbsp;⌄</button><button
-                    type="button" class="primary-action" id="open-movement">＋ &nbsp; Nova movimentação</button></div>
+            <div class="dash-actions">
+                <?php if (!empty($coortesComissao) && count($coortesComissao) > 1): ?>
+                    <form method="POST" action="?rota=comissao_trocar_turma">
+                        <?= csrf_field() ?>
+                        <select name="coorte_id" class="select-year" onchange="this.form.submit()">
+                            <?php foreach ($coortesComissao as $c): ?>
+                                <option value="<?= (int) $c['id'] ?>" <?= (int) $c['id'] === (int) $coorteAtual['id'] ? 'selected' : '' ?>>
+                                    <?= e($c['nome']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </form>
+                <?php endif; ?>
+                <a href="?rota=comissao_movimentacoes" class="primary-action" style="display:inline-flex;align-items:center;text-decoration:none;">+ Novo Lançamento</a>
+            </div>
         </div>
-        <div class="history-banner"><span class="cap-icon">♧</span>
-            <div><b>Uma coorte, uma história</b><small>A turma Formandos 2026 segue a mesma desde o 2º ano. Todo o
-                    histórico financeiro foi preservado.</small></div>
-            <div class="years"><span>✓ 2º ano</span><i></i><b>3º ano</b></div>
-        </div>
-        <section class="metrics" aria-label="Resumo financeiro">
-            <article class="metric"><span class="metric-icon green">↙</span><small>Total arrecadado</small><strong>R$
-                    <?= number_format($resumoAtual['receitas'], 2, ',', '.') ?></strong>
-                <p class="positive">Receitas registradas</p>
+
+        <section class="metrics">
+            <article class="metric">
+                <div class="metric-icon purple">★</div>
+                <small>Meta Financeira</small>
+                <strong><?= e(moeda($metaValor)) ?></strong>
+                <div class="progress"><i style="width: <?= min(100, max(0, $progresso)) ?>%;"></i></div>
+                <p class="metric-caption"><b><?= e((string) $progresso) ?>%</b> atingido</p>
             </article>
-            <article class="metric"><span class="metric-icon red">↗</span><small>Despesas</small><strong>R$
-                    <?= number_format($resumoAtual['despesas'], 2, ',', '.') ?></strong>
-                <p class="negative">Despesas registradas</p>
+
+            <article class="metric">
+                <div class="metric-icon green">↑</div>
+                <small>Total de Receitas</small>
+                <strong><?= e(moeda($receitasValor)) ?></strong>
+                <p class="positive">Entradas acumuladas</p>
             </article>
-            <article class="metric"><span class="metric-icon purple">▣</span><small>Saldo disponível</small><strong>R$
-                    <?= number_format($resumoAtual['saldo'], 2, ',', '.') ?></strong>
-                <div class="progress"><i style="width:<?= $percentualAtual ?>%"></i></div>
-                <p class="metric-caption"><b><?= $percentualAtual ?>%</b> da meta de R$
-                    <?= number_format($metaAtual, 0, ',', '.') ?></p>
+
+            <article class="metric">
+                <div class="metric-icon red">↓</div>
+                <small>Total de Despesas</small>
+                <strong><?= e(moeda($despesasValor)) ?></strong>
+                <p class="negative">Saídas registradas</p>
             </article>
-            <article class="metric"><span class="metric-icon amber">▤</span><small>Participantes
-                    ativos</small><strong><?= (int) $resumoAtual['ativos'] ?></strong>
-                <p class="warning"><?= (int) $resumoAtual['participantes'] ?> cadastrados na coorte</p>
+
+            <article class="metric">
+                <div class="metric-icon amber">◈</div>
+                <small>Saldo Líquido Atual</small>
+                <strong><?= e(moeda($saldoValor)) ?></strong>
+                <p>Falta para meta: <span><?= e(moeda((float) ($resumoFinanceiro['falta_meta'] ?? 0))) ?></span></p>
             </article>
         </section>
-        <section class="charts-row">
+
+        <section class="charts-row" aria-label="Resumo gráfico das finanças da turma">
             <article class="panel evolution">
                 <div class="panel-head">
                     <div>
-                        <h2>Evolução financeira</h2>
-                        <p>Valores mensais lançados nos últimos 6 meses</p>
-                    </div><span class="small-select">Últimos 6 meses</span>
+                        <h2>Receitas e despesas</h2>
+                        <p>Movimentações registradas nos últimos seis meses</p>
+                    </div>
                 </div>
-                <div class="chart-legend"><span><i></i>Receitas</span><span><i></i>Despesas</span></div>
-                <div class="bar-chart">
-                    <div class="y-labels"><span>R$ <?= number_format($chartMax, 0, ',', '.') ?></span><span>R$
-                            <?= number_format($chartMax * .66, 0, ',', '.') ?></span><span>R$
-                            <?= number_format($chartMax * .33, 0, ',', '.') ?></span><span>R$ 0</span></div>
+                <div class="chart-legend" aria-hidden="true">
+                    <span><i></i> Receitas</span>
+                    <span><i></i> Despesas</span>
+                </div>
+                <div class="bar-chart" role="img" aria-label="Gráfico mensal comparando receitas e despesas">
+                    <div class="y-labels" aria-hidden="true">
+                        <span><?= e(moeda($maiorMovimentoMensal)) ?></span>
+                        <span><?= e(moeda($maiorMovimentoMensal / 2)) ?></span>
+                        <span>R$ 0</span>
+                    </div>
                     <div class="plot">
-                        <div class="gridline g1"></div>
-                        <div class="gridline g2"></div>
-                        <div class="gridline g3"></div>
-                        <div class="gridline g4"></div>
-                        <?php foreach ($evolucaoAtual as $mes):
-                            $rh = min(100, $mes['receita'] / $chartMax * 100);
-                            $dh = min(100, $mes['despesa'] / $chartMax * 100); ?>
-                            <div class="month">
-                                <div class="bars"><i style="height:<?= $rh ?>%"></i><i style="height:<?= $dh ?>%"></i></div>
-                                <small><?= e($mes['label']) ?></small>
-                            </div><?php endforeach ?>
+                        <i class="gridline g1"></i>
+                        <i class="gridline g2"></i>
+                        <i class="gridline g3"></i>
+                        <i class="gridline g4"></i>
+                        <?php foreach ($mesesGrafico as $mes): ?>
+                            <?php
+                            $alturaReceitas = ($mes['receitas'] / $escalaGrafico) * 100;
+                            $alturaDespesas = ($mes['despesas'] / $escalaGrafico) * 100;
+                            ?>
+                            <div class="month" aria-hidden="true">
+                                <div class="bars">
+                                    <i title="Receitas: <?= e(moeda($mes['receitas'])) ?>" style="height: <?= e((string) $alturaReceitas) ?>%;"></i>
+                                    <i title="Despesas: <?= e(moeda($mes['despesas'])) ?>" style="height: <?= e((string) $alturaDespesas) ?>%;"></i>
+                                </div>
+                                <small><?= e($mes['nome']) ?></small>
+                            </div>
+                        <?php endforeach; ?>
                     </div>
                 </div>
             </article>
+
             <article class="panel goal-panel">
                 <div class="panel-head">
                     <div>
-                        <h2>Meta da formatura</h2>
-                        <p>Progresso pelo saldo líquido</p>
-                    </div><a class="gear" href="?pagina=configuracoes" aria-label="Configurar meta">⚙</a>
+                        <h2>Progresso da meta</h2>
+                        <p>Saldo líquido em relação ao objetivo da turma</p>
+                    </div>
                 </div>
-                <div class="donut"
-                    style="background:conic-gradient(#722bdc 0 <?= $percentualAtual ?>%,#eee8f3 <?= $percentualAtual ?>% 100%)">
+                <div class="donut" role="img" aria-label="<?= e((string) $progressoGrafico) ?>% da meta atingida" style="background: conic-gradient(#722bdc 0 <?= e((string) $progressoGrafico) ?>%, #eee8f3 <?= e((string) $progressoGrafico) ?>% 100%);">
                     <div>
-                        <b><?= $percentualAtual ?>%</b><small><?= $resumoAtual['saldo'] < 0 ? 'saldo negativo' : 'da meta' ?></small>
+                        <b><?= e((string) $progresso) ?>%</b>
+                        <small>da meta</small>
                     </div>
                 </div>
                 <div class="goal-values">
-                    <div><small>Saldo líquido</small><b class="<?= $resumoAtual['saldo'] < 0 ? 'money-out' : '' ?>">R$
-                            <?= number_format($resumoAtual['saldo'], 2, ',', '.') ?></b></div><i></i>
-                    <div><small>Meta total</small><b>R$ <?= number_format($metaAtual, 2, ',', '.') ?></b></div>
+                    <div>
+                        <small>Saldo atual</small>
+                        <b><?= e(moeda($saldoValor)) ?></b>
+                    </div>
+                    <i></i>
+                    <div>
+                        <small>Meta</small>
+                        <b><?= e(moeda($metaValor)) ?></b>
+                    </div>
                 </div>
                 <div class="projection">
-                    <b><?= $resumoAtual['saldo'] < 0 ? 'Saldo abaixo de zero' : 'Progresso atual' ?></b><small><?= $resumoAtual['saldo'] < 0 ? 'Registre receitas para cobrir as despesas e avançar na meta.' : ($percentualAtual . '% da meta após receitas e despesas.') ?></small>
+                    <b>Falta para alcançar a meta: <?= e(moeda((float) ($resumoFinanceiro['falta_meta'] ?? 0))) ?></b>
+                    <small>O cálculo considera o saldo líquido acumulado da turma.</small>
                 </div>
             </article>
         </section>
-        <section class="panel recent" id="recentes">
+
+        <section class="panel recent">
             <div class="panel-head">
                 <div>
-                    <h2>Movimentações recentes</h2>
-                    <p>Últimos registros financeiros da turma</p>
-                </div><a href="?pagina=movimentacoes">Ver todas &nbsp;→</a>
+                    <h2>Últimas Movimentações da Turma</h2>
+                    <p>Lançamentos registrados exclusivamente nesta coorte</p>
+                </div>
+                <a href="?rota=comissao_movimentacoes">Ver todas →</a>
             </div>
             <div class="table-scroll">
                 <table>
                     <thead>
                         <tr>
-                            <th>DESCRIÇÃO</th>
-                            <th>CATEGORIA</th>
-                            <th>DATA</th>
-                            <th>MEIO</th>
-                            <th>VALOR</th>
+                            <th>Descrição</th>
+                            <th>Categoria</th>
+                            <th>Participante</th>
+                            <th>Data / Meio</th>
+                            <th style="text-align:right;">Valor</th>
                         </tr>
                     </thead>
-                    <tbody><?php foreach ($recentes as $m):
-                        $entrada = $m['tipo'] === 'receita'; ?>
-                            <tr>
-                                <td><span
-                                        class="row-icon <?= $entrada ? 'green' : 'red' ?>"><?= $entrada ? '↙' : '↗' ?></span><span><b><?= e($m['descricao']) ?></b><small><?= e($m['participante'] ?? '') ?></small></span>
-                                </td>
-                                <td><label class="tag"><?= e($m['categoria'] ?? 'Outros') ?></label></td>
-                                <td><?= date('d/m/Y', strtotime($m['data_movimento'])) ?></td>
-                                <td><?= e(strtoupper($m['meio'])) ?></td>
-                                <td class="<?= $entrada ? 'money-in' : 'money-out' ?>"><?= $entrada ? '+' : '−' ?> R$
-                                    <?= number_format($m['valor'], 2, ',', '.') ?></td>
-                            </tr><?php endforeach ?>
+                    <tbody>
+                        <?php if (empty($ultimasMovimentacoes)): ?>
+                            <tr><td colspan="5">Nenhuma movimentação registrada ainda nesta turma.</td></tr>
+                        <?php else: ?>
+                            <?php foreach ($ultimasMovimentacoes as $mov): ?>
+                                <tr>
+                                    <td>
+                                        <span class="row-icon <?= $mov['tipo'] === 'receita' ? 'green' : 'red' ?>">
+                                            <?= $mov['tipo'] === 'receita' ? '+' : '−' ?>
+                                        </span>
+                                        <div>
+                                            <b><?= e($mov['descricao']) ?></b>
+                                            <small><?= e(ucfirst((string) $mov['tipo'])) ?></small>
+                                        </div>
+                                    </td>
+                                    <td><span class="tag"><?= e($mov['categoria_nome']) ?></span></td>
+                                    <td><?= e($mov['participante_nome'] ?? 'Geral da turma') ?></td>
+                                    <td><?= e($mov['data_movimento']) ?> • <?= e(strtoupper((string) $mov['meio'])) ?></td>
+                                    <td class="<?= $mov['tipo'] === 'receita' ? 'money-in' : 'money-out' ?>">
+                                        <?= $mov['tipo'] === 'receita' ? '+' : '-' ?> <?= e(moeda((float) $mov['valor'])) ?>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
                     </tbody>
-                </table><?php if (!$recentes): ?>
-                    <p class="empty-filter">Ainda não há movimentações para exibir.</p><?php endif ?>
+                </table>
             </div>
         </section>
     </main>
-    <dialog id="movement-modal">
-        <form method="post" class="modal-card"><button type="button" class="modal-close"
-                onclick="this.closest('dialog').close()" aria-label="Fechar">×</button>
-            <p class="eyebrow">REGISTRO FINANCEIRO</p>
-            <h2>Nova movimentação</h2><input type="hidden" name="csrf" value="<?= e($_SESSION['csrf']) ?>"><input
-                type="hidden" name="acao" value="nova_movimentacao"><label>Tipo<select name="tipo">
-                    <option value="receita">Receita / contribuição</option>
-                    <option value="despesa">Despesa</option>
-                </select></label><label>Descrição<input name="descricao" required
-                    maxlength="180"></label><label>Valor<input name="valor" type="number" min="0.01" step="0.01"
-                    required></label><label>Data<input name="data" type="date" value="<?= date('Y-m-d') ?>"
-                    required></label><label>Categoria<select name="categoria"
-                    required><?php foreach ($categorias as $cat): ?>
-                        <option value="<?= (int) $cat['id'] ?>"><?= e($cat['nome']) ?></option><?php endforeach ?>
-                </select></label><label>Participante (para contribuição)<select name="participante_id">
-                    <option value="">Sem associação individual</option><?php foreach ($participantesAtivos as $p): ?>
-                        <option value="<?= (int) $p['id'] ?>"><?= e($p['nome']) ?></option><?php endforeach ?>
-                </select></label><label>Parcela (opcional, concilia pagamento)<select name="parcela_id">
-                    <option value="">Sem parcela</option><?php foreach ($parcelasAbertas as $parcela): ?>
-                        <option value="<?= (int) $parcela['id'] ?>"><?= e($parcela['nome']) ?> ·
-                            <?= date('m/Y', strtotime($parcela['competencia'])) ?> · falta R$
-                            <?= number_format(max(0, (float) $parcela['valor'] - (float) $parcela['pago']), 2, ',', '.') ?></option>
-                    <?php endforeach ?>
-                </select></label><label>Meio<select name="meio">
-                    <option value="pix">PIX</option>
-                    <option value="dinheiro">Dinheiro</option>
-                    <option value="transferencia">Transferência</option>
-                    <option value="outro">Outro</option>
-                </select></label><button class="primary-action" type="submit">Salvar movimentação</button>
-        </form>
-    </dialog>
-    <script>document.getElementById('open-movement').addEventListener('click', () => { const dialog = document.getElementById('movement-modal'); if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', '') }); document.querySelector('.icon-button').addEventListener('click', () => alert('Você está em dia com as notificações.')); document.querySelector('.select-year').addEventListener('click', () => alert('Esta coorte preserva o histórico do 2º e do 3º ano.'));</script>
-</body>
-
-</html>
+</div>

@@ -1,282 +1,437 @@
 <?php
 declare(strict_types=1);
-session_start();
-require_once __DIR__ . '/DB/Database.php';
-require_once __DIR__ . '/Controller/UsuarioController.php';
-require_once __DIR__ . '/Controller/FinanceiroController.php';
 
-function e(string $valor): string
-{
-    return htmlspecialchars($valor, ENT_QUOTES, 'UTF-8');
-}
-function progressoMetaColetiva(float $saldo, float $meta): array
-{
-    $percentual = $meta > 0 ? max(0, min(100, (int) round($saldo / $meta * 100))) : 0;
-    return ['percentual' => $percentual, 'faltante' => max(0, $meta - $saldo)];
-}
-function salvarFoto(array $arquivo): ?string
-{
-    if (($arquivo['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE)
-        return null;
-    if (($arquivo['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK || ($arquivo['size'] ?? 0) > 2 * 1024 * 1024)
-        throw new InvalidArgumentException('A imagem deve ter até 2 MB.');
-    $mime = (new finfo(FILEINFO_MIME_TYPE))->file($arquivo['tmp_name']);
-    $ext = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'][$mime] ?? null;
-    if (!$ext)
-        throw new InvalidArgumentException('Use uma imagem PNG, JPG ou WEBP.');
-    $dir = __DIR__ . '/uploads/perfis';
-    if (!is_dir($dir))
-        mkdir($dir, 0755, true);
-    $nome = bin2hex(random_bytes(16)) . '.' . $ext;
-    if (!move_uploaded_file($arquivo['tmp_name'], $dir . '/' . $nome))
-        throw new RuntimeException('Não foi possível salvar a foto.');
-    return 'uploads/perfis/' . $nome;
+if (session_status() === PHP_SESSION_NONE) {
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path' => '/',
+        'httponly' => true,
+        'samesite' => 'Lax',
+        'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
+    ]);
+    session_start();
 }
 
-$_SESSION['csrf'] ??= bin2hex(random_bytes(32));
-$modo = ($_GET['modo'] ?? 'login') === 'cadastro' ? 'cadastro' : 'login';
-$erro = '';
-$sucesso = '';
-try {
-    $controller = new UsuarioController(new UsuarioModel(Database::conectar()));
-    $financeiro = new FinanceiroController(new FinanceiroModel(Database::conectar()));
-    $coorteAtual = $financeiro->coorte();
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? ''))
-            throw new RuntimeException('Sessão expirada. Atualize a página e tente novamente.');
-        $acao = $_POST['acao'] ?? '';
-        if (in_array($acao, ['novo_participante', 'nova_movimentacao', 'salvar_coorte'], true) && ($_SESSION['usuario']['perfil'] ?? '') !== 'comissao')
-            throw new RuntimeException('Ação disponível apenas para a comissão.');
-        if ($acao === 'registrar_contribuicao') {
-            if (($_SESSION['usuario']['perfil'] ?? '') !== 'participante')
-                throw new RuntimeException('Ação disponível apenas para participantes.');
-            $participante = $financeiro->participanteDoUsuario((int) $coorteAtual['id'], (int) $_SESSION['usuario']['id']);
-            if (!$participante)
-                throw new RuntimeException('Seu cadastro de participante não está vinculado a esta conta.');
-            $parcelaId = !empty($_POST['parcela_id']) ? (int) $_POST['parcela_id'] : null;
-            $parcelas = $financeiro->parcelasParticipante((int) $participante['id']);
-            $parcelaSelecionada = null;
-            if ($parcelaId)
-                foreach ($parcelas as $parcela)
-                    if ((int) $parcela['id'] === $parcelaId) {
-                        $parcelaSelecionada = $parcela;
-                        break;
-                    }
-            if ($parcelaId && !$parcelaSelecionada)
-                throw new RuntimeException('A parcela selecionada não pertence ao seu cadastro.');
-            if ($parcelaSelecionada && ($parcelaSelecionada['status'] ?? '') === 'cancelada')
-                throw new InvalidArgumentException('Não é possível pagar uma parcela cancelada.');
-            $valor = (float) str_replace(',', '.', (string) ($_POST['valor'] ?? 0));
-            if ($parcelaSelecionada) {
-                $restante = max(0, (float) $parcelaSelecionada['valor'] - (float) $parcelaSelecionada['pago']);
-                if ($restante <= 0 || $valor > $restante + 0.001)
-                    throw new InvalidArgumentException('O valor excede o saldo desta parcela.');
+$baseDir = __DIR__;
+
+spl_autoload_register(static function (string $class) use ($baseDir): void {
+    $prefix = 'FormaPay\\';
+    if (strncmp($class, $prefix, strlen($prefix)) !== 0) {
+        return;
+    }
+    $relativeClass = str_replace('\\', '/', substr($class, strlen($prefix)));
+    $file = $baseDir . '/' . $relativeClass . '.php';
+    if (is_file($file)) {
+        require_once $file;
+    }
+});
+
+require_once $baseDir . '/DB/Database.php';
+require_once $baseDir . '/Model/UsuarioModel.php';
+require_once $baseDir . '/Model/FinanceiroModel.php';
+require_once $baseDir . '/Controller/UsuarioController.php';
+require_once $baseDir . '/Controller/FinanceiroController.php';
+
+use FormaPay\Controller\FinanceiroController;
+use FormaPay\Controller\UsuarioController;
+use FormaPay\Model\FinanceiroModel;
+use FormaPay\Model\UsuarioModel;
+
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
+function e(mixed $valor): string
+{
+    return htmlspecialchars((string) ($valor ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+}
+
+function moeda(float $valor): string
+{
+    return 'R$ ' . number_format($valor, 2, ',', '.');
+}
+
+function iniciais(string $nome): string
+{
+    $partes = preg_split('/\s+/', trim($nome)) ?: [];
+    $sigla = '';
+    foreach (array_slice($partes, 0, 2) as $p) {
+        $sigla .= mb_strtoupper(mb_substr($p, 0, 1));
+    }
+    return $sigla !== '' ? $sigla : 'FP';
+}
+
+function csrf_field(): string
+{
+    return '<input type="hidden" name="csrf_token" value="' . e($_SESSION['csrf_token'] ?? '') . '">';
+}
+
+function validar_csrf(): bool
+{
+    $tokenPost = (string) ($_POST['csrf_token'] ?? '');
+    $tokenSessao = (string) ($_SESSION['csrf_token'] ?? '');
+    return $tokenPost !== '' && $tokenSessao !== '' && hash_equals($tokenSessao, $tokenPost);
+}
+
+$usuarioController = new UsuarioController();
+$financeiroController = new FinanceiroController();
+$usuarioModel = new UsuarioModel();
+$financeiroModel = new FinanceiroModel();
+
+$flashSucesso = $_SESSION['flash_sucesso'] ?? null;
+$flashErro = $_SESSION['flash_erro'] ?? null;
+unset($_SESSION['flash_sucesso'], $_SESSION['flash_erro']);
+
+$rota = (string) ($_GET['rota'] ?? $_POST['rota'] ?? 'login');
+$rotasPublicas = ['login', 'cadastrar'];
+
+$usuarioId = isset($_SESSION['usuario_id']) ? (int) $_SESSION['usuario_id'] : null;
+$perfil = (string) ($_SESSION['usuario_perfil'] ?? '');
+
+if ($usuarioId === null && !in_array($rota, $rotasPublicas, true)) {
+    $rota = 'login';
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!validar_csrf()) {
+        $_SESSION['flash_erro'] = 'Sessão expirada ou token inválido. Tente novamente.';
+        header('Location: ?rota=' . urlencode($rota));
+        exit;
+    }
+
+    switch ($rota) {
+        case 'login':
+            $res = $usuarioController->login((string) ($_POST['email'] ?? ''), (string) ($_POST['senha'] ?? ''));
+            if ($res['ok']) {
+                header('Location: ?rota=' . urlencode($res['redirect']));
+                exit;
             }
-            $categorias = $financeiro->categorias((int) $coorteAtual['id']);
-            $categoriaId = 0;
-            foreach ($categorias as $categoria)
-                if (($categoria['nome'] ?? '') === ($parcelaId ? 'Mensalidade' : 'Receita extra')) {
-                    $categoriaId = (int) $categoria['id'];
+            $flashErro = $res['erro'];
+            break;
+
+        case 'cadastrar':
+            $res = $usuarioController->cadastrar(
+                (string) ($_POST['nome'] ?? ''),
+                (string) ($_POST['email'] ?? ''),
+                (string) ($_POST['senha'] ?? ''),
+                (string) ($_POST['confirmar_senha'] ?? ''),
+                (string) ($_POST['perfil'] ?? 'participante')
+            );
+            if ($res['ok']) {
+                $_SESSION['flash_sucesso'] = 'Conta criada com sucesso!';
+                header('Location: ?rota=' . urlencode($res['redirect']));
+                exit;
+            }
+            $flashErro = $res['erro'];
+            break;
+
+        case 'logout':
+            $usuarioController->logout();
+            header('Location: ?rota=login');
+            exit;
+
+        case 'comissao_criar_turma':
+            if ($usuarioId !== null && $perfil === 'comissao') {
+                $res = $financeiroController->criarNovaCoorteComissao(
+                    $usuarioId,
+                    (string) ($_POST['nome'] ?? ''),
+                    (string) ($_POST['meta'] ?? ''),
+                    (string) ($_POST['vencimento_dia'] ?? '10'),
+                    (string) ($_POST['instituicao_curso'] ?? ''),
+                    (string) ($_POST['ano_formatura'] ?? '')
+                );
+                if ($res['ok']) {
+                    $_SESSION['flash_sucesso'] = $res['mensagem'];
+                    header('Location: ?rota=comissao_dashboard');
+                    exit;
+                }
+                $_SESSION['flash_erro'] = $res['erro'];
+                header('Location: ?rota=comissao_onboarding');
+                exit;
+            }
+            break;
+
+        case 'comissao_trocar_turma':
+            if ($usuarioId !== null && $perfil === 'comissao') {
+                $coorteAlvo = (int) ($_POST['coorte_id'] ?? 0);
+                $res = $financeiroController->trocarCoorteAtivaComissao($usuarioId, $coorteAlvo);
+                $_SESSION[$res['ok'] ? 'flash_sucesso' : 'flash_erro'] = $res['mensagem'] ?? $res['erro'];
+                header('Location: ?rota=comissao_dashboard');
+                exit;
+            }
+            break;
+
+        case 'comissao_salvar_config':
+            if ($usuarioId !== null && $perfil === 'comissao') {
+                $coorteAtualId = (int) ($_SESSION['coorte_id'] ?? 0);
+                $res = $financeiroController->salvarConfiguracoesCoorte(
+                    $usuarioId,
+                    $coorteAtualId,
+                    (string) ($_POST['nome'] ?? ''),
+                    (string) ($_POST['meta'] ?? ''),
+                    (string) ($_POST['vencimento_dia'] ?? '10'),
+                    (string) ($_POST['instituicao_curso'] ?? ''),
+                    (string) ($_POST['ano_formatura'] ?? ''),
+                    !empty($_POST['ativa'])
+                );
+                $_SESSION[$res['ok'] ? 'flash_sucesso' : 'flash_erro'] = $res['mensagem'] ?? $res['erro'];
+                header('Location: ?rota=comissao_configuracoes');
+                exit;
+            }
+            break;
+
+        case 'comissao_regenerar_codigo':
+            if ($usuarioId !== null && $perfil === 'comissao') {
+                $coorteAtualId = (int) ($_SESSION['coorte_id'] ?? 0);
+                $res = $financeiroController->regenerarCodigoCoorte($usuarioId, $coorteAtualId);
+                $_SESSION[$res['ok'] ? 'flash_sucesso' : 'flash_erro'] = $res['mensagem'] ?? $res['erro'];
+                header('Location: ?rota=comissao_configuracoes');
+                exit;
+            }
+            break;
+
+        case 'comissao_nova_movimentacao':
+            if ($usuarioId !== null && $perfil === 'comissao') {
+                $coorteAtualId = (int) ($_SESSION['coorte_id'] ?? 0);
+                $catId = !empty($_POST['categoria_id']) ? (int) $_POST['categoria_id'] : null;
+                $partId = !empty($_POST['participante_id']) ? (int) $_POST['participante_id'] : null;
+                $res = $financeiroController->adicionarMovimentacao(
+                    $usuarioId,
+                    $coorteAtualId,
+                    (string) ($_POST['tipo'] ?? 'receita'),
+                    $catId,
+                    (string) ($_POST['descricao'] ?? ''),
+                    (string) ($_POST['valor'] ?? ''),
+                    (string) ($_POST['data_movimento'] ?? date('Y-m-d')),
+                    (string) ($_POST['meio'] ?? 'pix'),
+                    $partId
+                );
+                $_SESSION[$res['ok'] ? 'flash_sucesso' : 'flash_erro'] = $res['mensagem'] ?? $res['erro'];
+                header('Location: ?rota=comissao_movimentacoes');
+                exit;
+            }
+            break;
+
+        case 'comissao_estornar_movimentacao':
+            if ($usuarioId !== null && $perfil === 'comissao') {
+                $coorteAtualId = (int) ($_SESSION['coorte_id'] ?? 0);
+                $movId = (int) ($_POST['movimentacao_id'] ?? 0);
+                $res = $financeiroController->estornarMovimentacaoCoorte($usuarioId, $coorteAtualId, $movId);
+                $_SESSION[$res['ok'] ? 'flash_sucesso' : 'flash_erro'] = $res['mensagem'] ?? $res['erro'];
+                header('Location: ?rota=comissao_movimentacoes');
+                exit;
+            }
+            break;
+
+        case 'comissao_participante_status':
+            if ($usuarioId !== null && $perfil === 'comissao') {
+                $coorteAtualId = (int) ($_SESSION['coorte_id'] ?? 0);
+                $partId = (int) ($_POST['participante_id'] ?? 0);
+                $novoStatus = (string) ($_POST['status'] ?? 'ativo');
+                if ($financeiroModel->usuarioEhComissaoDaCoorte($usuarioId, $coorteAtualId)) {
+                    $usuarioModel->alterarStatusParticipante($coorteAtualId, $partId, $novoStatus);
+                    $_SESSION['flash_sucesso'] = 'Status do participante atualizado.';
+                } else {
+                    $_SESSION['flash_erro'] = 'Sem permissão nesta turma.';
+                }
+                header('Location: ?rota=comissao_participantes');
+                exit;
+            }
+            break;
+
+        case 'participante_entrar_turma':
+            if ($usuarioId !== null && $perfil === 'participante') {
+                $codigo = (string) ($_POST['codigo_convite'] ?? '');
+                $confirmar = !empty($_POST['confirmar_entrada']);
+
+                if (!$confirmar) {
+                    $previa = $financeiroController->validarCodigoPrevia($codigo);
+                    if ($previa['ok']) {
+                        $coortePrevia = $previa['coorte'];
+                    } else {
+                        $flashErro = $previa['erro'];
+                    }
+                } else {
+                    $res = $financeiroController->entrarNaCoorteParticipante(
+                        $usuarioId,
+                        (string) ($_SESSION['usuario_nome'] ?? ''),
+                        (string) ($_SESSION['usuario_email'] ?? ''),
+                        $codigo
+                    );
+                    if ($res['ok']) {
+                        $_SESSION['flash_sucesso'] = $res['mensagem'];
+                        header('Location: ?rota=participante_dashboard');
+                        exit;
+                    }
+                    $flashErro = $res['erro'];
+                }
+            }
+            break;
+
+        case 'usuario_editar':
+            if ($usuarioId !== null) {
+                $res = $usuarioController->atualizarConta(
+                    $usuarioId,
+                    (string) ($_POST['nome'] ?? ''),
+                    (string) ($_POST['email'] ?? ''),
+                    (string) ($_POST['senha_atual'] ?? ''),
+                    (string) ($_POST['nova_senha'] ?? ''),
+                    $_FILES['foto_perfil'] ?? null
+                );
+                $_SESSION[$res['ok'] ? 'flash_sucesso' : 'flash_erro'] = $res['mensagem'] ?? $res['erro'];
+                header('Location: ?rota=usuario_editar');
+                exit;
+            }
+            break;
+    }
+}
+
+// Guardas de isolamento por coorte_id
+$coorteIdSessao = isset($_SESSION['coorte_id']) && $_SESSION['coorte_id'] !== null ? (int) $_SESSION['coorte_id'] : null;
+
+if ($usuarioId !== null && !in_array($rota, ['login', 'cadastrar', 'logout'], true)) {
+    if ($perfil === 'comissao') {
+        $coortesComissao = $financeiroModel->listarCoortesDaComissao($usuarioId);
+        if (empty($coortesComissao) && $rota !== 'comissao_onboarding') {
+            header('Location: ?rota=comissao_onboarding');
+            exit;
+        }
+        if (!empty($coortesComissao) && $rota !== 'comissao_onboarding') {
+            $valida = false;
+            foreach ($coortesComissao as $c) {
+                if ((int) $c['id'] === $coorteIdSessao) {
+                    $valida = true;
                     break;
                 }
-            if (!$categoriaId)
-                foreach ($categorias as $categoria)
-                    if (($categoria['nome'] ?? '') === 'Outros') {
-                        $categoriaId = (int) $categoria['id'];
-                        break;
-                    }
-            if (!$categoriaId)
-                throw new RuntimeException('Não há categoria de receita cadastrada para este lançamento.');
-            $descricao = $parcelaId ? 'Contribuição · parcela ' . date('m/Y', strtotime($parcelaSelecionada['competencia'])) : 'Contribuição extra';
-            $meio = (string) ($_POST['meio'] ?? 'pix');
-            if (!in_array($meio, ['pix', 'dinheiro', 'transferencia', 'outro'], true))
-                $meio = 'outro';
-            $financeiro->lancar((int) $coorteAtual['id'], (int) $_SESSION['usuario']['id'], 'receita', $descricao, $valor, date('Y-m-d'), $meio, $categoriaId, (int) $participante['id'], $parcelaId);
-            header('Location: index.php?pagina=participante&contribuicao=1');
+            }
+            if (!$valida) {
+                $coorteIdSessao = (int) $coortesComissao[0]['id'];
+                $_SESSION['coorte_id'] = $coorteIdSessao;
+                $usuarioModel->definirCoorteAtiva($usuarioId, $coorteIdSessao);
+            }
+        }
+        if (str_starts_with($rota, 'participante_')) {
+            header('Location: ?rota=comissao_dashboard');
             exit;
         }
-        if ($acao === 'cadastro') {
-            $controller->cadastrar((string) ($_POST['nome'] ?? ''), (string) ($_POST['email'] ?? ''), (string) ($_POST['senha'] ?? ''), (string) ($_POST['perfil'] ?? ''), salvarFoto($_FILES['foto_perfil'] ?? []));
-            $sucesso = 'Conta criada! Agora entre com seu e-mail e senha.';
-            $modo = 'login';
-        } elseif ($acao === 'login') {
-            $usuario = $controller->login((string) ($_POST['email'] ?? ''), (string) ($_POST['senha'] ?? ''));
-            if (!$usuario)
-                throw new InvalidArgumentException('E-mail ou senha incorretos.');
-            session_regenerate_id(true);
-            $_SESSION['usuario'] = $usuario;
-            header('Location: index.php?pagina=' . (($usuario['perfil'] ?? 'comissao') === 'participante' ? 'participante' : 'dashboard'));
+    } elseif ($perfil === 'participante') {
+        $participanteVinculo = $financeiroModel->obterParticipantePorUsuario($usuarioId);
+        $vinculoValido = $participanteVinculo !== null
+            && $participanteVinculo['participante_status'] === 'ativo'
+            && (int) $participanteVinculo['ativa'] === 1;
+
+        if (!$vinculoValido && $rota !== 'participante_entrar_turma' && $rota !== 'usuario_editar') {
+            header('Location: ?rota=participante_entrar_turma');
             exit;
-        } elseif ($acao === 'sair') {
-            $_SESSION = [];
-            session_destroy();
-            header('Location: index.php');
-            exit;
-        } elseif ($acao === 'novo_participante') {
-            $financeiro->adicionarParticipante((int) $coorteAtual['id'], (string) ($_POST['nome'] ?? ''), ($_POST['email'] ?? '') ?: null, (float) ($_POST['valor'] ?? 0), (int) $_SESSION['usuario']['id']);
-            header('Location: index.php?pagina=participantes&salvo=1');
-            exit;
-        } elseif ($acao === 'nova_movimentacao') {
-            $financeiro->lancar((int) $coorteAtual['id'], (int) $_SESSION['usuario']['id'], (string) ($_POST['tipo'] ?? ''), (string) ($_POST['descricao'] ?? ''), (float) str_replace(',', '.', (string) ($_POST['valor'] ?? 0)), (string) ($_POST['data'] ?? date('Y-m-d')), (string) ($_POST['meio'] ?? 'pix'), (int) ($_POST['categoria'] ?? 0), !empty($_POST['participante_id']) ? (int) $_POST['participante_id'] : null, !empty($_POST['parcela_id']) ? (int) $_POST['parcela_id'] : null);
-            header('Location: index.php?pagina=movimentacoes&salvo=1');
-            exit;
-        } elseif ($acao === 'salvar_coorte') {
-            $financeiro->atualizarCoorte((int) $coorteAtual['id'], (string) ($_POST['nome'] ?? ''), (float) str_replace(',', '.', (string) ($_POST['meta'] ?? 0)), (int) ($_POST['vencimento_dia'] ?? 10));
-            header('Location: index.php?pagina=configuracoes&salvo=1');
-            exit;
-        } elseif ($acao === 'salvar_perfil') {
-            $foto = salvarFoto($_FILES['foto_perfil'] ?? []);
-            $controller->atualizarPerfil((int) $_SESSION['usuario']['id'], (string) ($_POST['nome'] ?? ''), (string) ($_POST['email'] ?? ''), $foto);
-            $_SESSION['usuario'] = $controller->porId((int) $_SESSION['usuario']['id']);
-            header('Location: index.php?pagina=configuracoes&perfil=1');
+        }
+        if ($vinculoValido) {
+            $coorteIdSessao = (int) $participanteVinculo['coorte_id'];
+            $_SESSION['coorte_id'] = $coorteIdSessao;
+            $_SESSION['participante_id'] = (int) $participanteVinculo['participante_id'];
+        }
+        if (str_starts_with($rota, 'comissao_')) {
+            header('Location: ?rota=participante_dashboard');
             exit;
         }
     }
-} catch (Throwable $ex) {
-    $erro = $ex instanceof PDOException ? 'Não foi possível conectar ao banco. Confira a configuração e importe DB/schema.sql.' : $ex->getMessage();
 }
 
-$_SESSION['csrf'] = bin2hex(random_bytes(32));
-$usuarioLogado = $_SESSION['usuario'] ?? null;
-if ($usuarioLogado) {
-    $pagina = $_GET['pagina'] ?? '';
-    if (($usuarioLogado['perfil'] ?? 'comissao') === 'participante') {
-        $participanteAtual = $financeiro->participanteDoUsuario((int) $coorteAtual['id'], (int) $usuarioLogado['id']);
-        $parcelasAtuais = $participanteAtual ? $financeiro->parcelasParticipante((int) $participanteAtual['id']) : [];
-        $listaMovimentacoes = $participanteAtual ? $financeiro->movimentacoes((int) $coorteAtual['id'], (int) $participanteAtual['id']) : [];
-        $resumoColetivo = $financeiro->resumo((int) $coorteAtual['id']);
-        $usuarioAtual = $controller->porId((int) $usuarioLogado['id']);
-        if ($pagina === 'configuracoes') {
-            require __DIR__ . '/View/Participante/configuracoes.php';
+$coorteAtual = $coorteIdSessao ? $financeiroModel->buscarCoortePorId($coorteIdSessao) : null;
+$resumoFinanceiro = $coorteIdSessao ? $financeiroModel->obterResumoFinanceiro($coorteIdSessao) : null;
+?>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FormaPay — Gestão Financeira de Formaturas</title>
+    <link rel="stylesheet" href="View/Shared/style.css">
+</head>
+<body>
+<?php
+switch ($rota) {
+    case 'cadastrar':
+        require $baseDir . '/View/Usuario/cadastrar.php';
+        break;
+
+    case 'usuario_editar':
+        $usuarioDados = $usuarioModel->buscarPorId((int) $usuarioId);
+        require $baseDir . '/View/Usuario/editar.php';
+        break;
+
+    case 'usuario_deletar':
+        require $baseDir . '/View/Usuario/deletar.php';
+        break;
+
+    case 'usuario_listar':
+        $participantesCoorte = $coorteIdSessao ? $usuarioModel->listarParticipantesDaCoorte($coorteIdSessao) : [];
+        require $baseDir . '/View/Usuario/listar.php';
+        break;
+
+    case 'comissao_onboarding':
+        $coortesComissao = $financeiroModel->listarCoortesDaComissao((int) $usuarioId);
+        require $baseDir . '/View/Comissao/onboarding.php';
+        break;
+
+    case 'comissao_dashboard':
+        $coortesComissao = $financeiroModel->listarCoortesDaComissao((int) $usuarioId);
+        $ultimasMovimentacoes = $financeiroModel->listarMovimentacoes((int) $coorteIdSessao, null, 6);
+        $resumoMensal = $financeiroModel->obterResumoMensal((int) $coorteIdSessao, 6);
+        require $baseDir . '/View/Comissao/dashboard.php';
+        break;
+
+    case 'comissao_movimentacoes':
+        $filtroTipo = isset($_GET['tipo']) && in_array($_GET['tipo'], ['receita', 'despesa'], true) ? $_GET['tipo'] : null;
+        $movimentacoes = $financeiroModel->listarMovimentacoes((int) $coorteIdSessao, $filtroTipo);
+        $categoriasCoorte = $financeiroModel->listarCategoriasDaCoorte((int) $coorteIdSessao);
+        $participantesCoorte = $usuarioModel->listarParticipantesDaCoorte((int) $coorteIdSessao);
+        require $baseDir . '/View/Comissao/movimentacoes.php';
+        break;
+
+    case 'comissao_participantes':
+        $participantesCoorte = $usuarioModel->listarParticipantesDaCoorte((int) $coorteIdSessao);
+        require $baseDir . '/View/Comissao/participantes.php';
+        break;
+
+    case 'comissao_relatorios':
+        $movimentacoes = $financeiroModel->listarMovimentacoes((int) $coorteIdSessao);
+        $resumoCategorias = $financeiroModel->obterResumoPorCategoria((int) $coorteIdSessao);
+        require $baseDir . '/View/Comissao/relatorios.php';
+        break;
+
+    case 'comissao_configuracoes':
+        require $baseDir . '/View/Comissao/configuracoes.php';
+        break;
+
+    case 'participante_entrar_turma':
+        require $baseDir . '/View/Participante/entrar_turma.php';
+        break;
+
+    case 'participante_dashboard':
+        $partIdSessao = isset($_SESSION['participante_id']) ? (int) $_SESSION['participante_id'] : null;
+        $movimentacoesTurma = $financeiroModel->listarMovimentacoes((int) $coorteIdSessao, null, 20);
+        $minhasContribuicoes = $partIdSessao
+            ? $financeiroModel->listarMovimentacoes((int) $coorteIdSessao, 'receita', 20, $partIdSessao)
+            : [];
+        require $baseDir . '/View/Participante/dashboard.php';
+        break;
+
+    case 'participante_configuracoes':
+        require $baseDir . '/View/Participante/configuracoes.php';
+        break;
+
+    case 'login':
+    default:
+        if ($usuarioId !== null) {
+            $destino = $perfil === 'comissao'
+                ? ($coorteIdSessao ? 'comissao_dashboard' : 'comissao_onboarding')
+                : ($coorteIdSessao ? 'participante_dashboard' : 'participante_entrar_turma');
+            header('Location: ?rota=' . $destino);
             exit;
         }
-        require __DIR__ . '/View/Participante/dashboard.php';
-        exit;
-    }
-    if (in_array($pagina, ['dashboard', 'inicio'], true)) {
-        $resumoAtual = $financeiro->resumo((int) $coorteAtual['id']);
-        $listaMovimentacoes = $financeiro->movimentacoes((int) $coorteAtual['id']);
-        $evolucaoAtual = $financeiro->evolucaoMensal((int) $coorteAtual['id']);
-        $categorias = $financeiro->categorias((int) $coorteAtual['id']);
-        $participantesAtivos = $financeiro->participantesAtivos((int) $coorteAtual['id']);
-        $parcelasAbertas = $financeiro->parcelasAbertas((int) $coorteAtual['id']);
-        require __DIR__ . '/View/Comissao/dashboard.php';
-        exit;
-    }
-    if ($pagina === 'movimentacoes') {
-        $resumoAtual = $financeiro->resumo((int) $coorteAtual['id']);
-        $listaMovimentacoes = $financeiro->movimentacoes((int) $coorteAtual['id']);
-        $categorias = $financeiro->categorias((int) $coorteAtual['id']);
-        $participantesAtivos = $financeiro->participantesAtivos((int) $coorteAtual['id']);
-        $parcelasAbertas = $financeiro->parcelasAbertas((int) $coorteAtual['id']);
-        require __DIR__ . '/View/Comissao/movimentacoes.php';
-        exit;
-    }
-    if ($pagina === 'participantes') {
-        $resumoAtual = $financeiro->resumo((int) $coorteAtual['id']);
-        $listaParticipantes = $financeiro->participantes((int) $coorteAtual['id']);
-        require __DIR__ . '/View/Comissao/participantes.php';
-        exit;
-    }
-    if ($pagina === 'relatorios') {
-        $listaMovimentacoes = $financeiro->movimentacoes((int) $coorteAtual['id']);
-        $categorias = $financeiro->categorias((int) $coorteAtual['id']);
-        $categoriasDespesas = $financeiro->despesasPorCategoria((int) $coorteAtual['id']);
-        $resumoAtual = $financeiro->resumo((int) $coorteAtual['id']);
-        require __DIR__ . '/View/Comissao/relatorios.php';
-        exit;
-    }
-    if ($pagina === 'configuracoes') {
-        $usuarioAtual = $controller->porId((int) $usuarioLogado['id']);
-        require __DIR__ . '/View/Comissao/configuracoes.php';
-        exit;
-    }
+        require $baseDir . '/View/Usuario/login.php';
+        break;
 }
 ?>
-<!doctype html>
-<html lang="pt-BR">
-
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#160d20">
-    <title><?= $modo === 'cadastro' ? 'Criar conta' : 'Entrar' ?> | FormaPay</title>
-    <link rel="stylesheet" href="/FormaPay/View/Shared/style.css?v=19">
-</head>
-
-<body>
-    <main class="layout">
-        <section class="story" aria-label="Sobre a FormaPay">
-            <header class="brand">
-                <img class="brand-image" src="/FormaPay/View/Shared/logo-formapay.png" alt="Logo FormaPay">
-                <div><strong>Forma<span>Pay</span></strong><small>FORMATURA EM DIA</small></div>
-                
-            </header>
-            <div class="story-copy">
-                <p class="eyebrow">CONTAS ORGANIZADAS</p>
-                <h1>A conquista é coletiva.<br><span>A transparência<br>também.</span></h1>
-                <p class="intro">Acompanhe contribuições, despesas e o caminho até a formatura em um espaço feito para a
-                    sua turma.</p>
-                <div class="feature"><i>▣</i>
-                    <div><b>Finanças centralizadas</b><small>Entradas, despesas e saldo sempre atualizados.</small>
-                    </div>
-                </div>
-                <div class="feature"><i>▤</i>
-                    <div><b>Prestação de contas clara</b><small>Relatórios acessíveis para perfis autorizados.</small>
-                    </div>
-                </div>
-            </div>
-            <footer><b class="year">26</b>
-                <div><b>Formandos 2026</b><small>Juntos desde o 2º ano</small></div>
-            </footer>
-        </section>
-        <section class="form-side">
-            <div class="auth-box">
-                <nav class="tabs"><a class="<?= $modo === 'login' ? 'active' : '' ?>" href="?modo=login">Entrar</a><a
-                        class="<?= $modo === 'cadastro' ? 'active' : '' ?>" href="?modo=cadastro">Criar conta</a></nav>
-                <p class="eyebrow"><?= $modo === 'cadastro' ? 'FAÇA PARTE DA TURMA' : 'BEM-VINDO DE VOLTA' ?></p>
-                <h2><?= $modo === 'cadastro' ? 'Crie sua conta' : 'Acesse sua conta' ?></h2>
-                <p class="subhead">
-                    <?= $modo === 'cadastro' ? 'Cadastre-se como participante da coorte Formandos 2026.' : 'Entre para acompanhar a jornada da sua turma.' ?>
-                </p>
-                <?php if ($erro): ?>
-                    <div class="notice error" role="alert"><?= e($erro) ?></div><?php endif ?><?php if ($sucesso): ?>
-                    <div class="notice success" role="status"><?= e($sucesso) ?></div><?php endif ?>
-                <form method="post" enctype="multipart/form-data" class="auth-form"><input type="hidden" name="csrf"
-                        value="<?= e($_SESSION['csrf']) ?>"><input type="hidden" name="acao" value="<?= $modo ?>">
-                    <?php if ($modo === 'cadastro'): ?><label for="nome">Nome completo</label>
-                        <div class="field"><span>♙</span><input id="nome" name="nome" autocomplete="name"
-                                placeholder="Seu nome completo" required maxlength="120"></div><label for="perfil">Cadastrar
-                            como</label>
-                        <div class="field"><span>♧</span><select id="perfil" name="perfil" required>
-                                <option value="participante">Participante</option>
-                                <option value="comissao">Comissão</option>
-                            </select></div><?php endif ?>
-                    <?php if ($modo === 'cadastro'): ?><label for="foto_perfil">Foto de perfil (opcional)</label>
-                        <div class="field"><input id="foto_perfil" name="foto_perfil" type="file"
-                                accept="image/png,image/jpeg,image/webp"></div>
-                        <div class="upload-preview" id="photo-preview" hidden><img
-                                alt="Prévia da foto de perfil"><span>Prévia da foto de perfil</span></div><?php endif ?>
-                    <label for="email">E-mail</label>
-                    <div class="field"><span>@</span><input id="email" name="email" type="email" autocomplete="email"
-                            placeholder="voce@email.com" required maxlength="190"></div>
-                    <div class="label-row"><label for="senha">Senha</label><?php if ($modo === 'login'): ?><a
-                                href="mailto:comissao@formapay.com?subject=Recuperar%20senha">Esqueceu a
-                                senha?</a><?php endif ?></div>
-                    <div class="field"><span>♙</span><input id="senha" name="senha" type="password"
-                            autocomplete="<?= $modo === 'cadastro' ? 'new-password' : 'current-password' ?>"
-                            placeholder="Mínimo de 6 caracteres" required minlength="6"><button class="toggle-password"
-                            type="button" aria-label="Mostrar senha">◉</button></div>
-                    <?php if ($modo === 'cadastro'): ?><label class="terms"><input type="checkbox" required><span>Li e
-                                concordo com os termos de uso e a política de privacidade.</span></label><?php endif ?>
-                    <button class="button"
-                        type="submit"><?= $modo === 'cadastro' ? 'Criar minha conta' : 'Entrar na plataforma' ?><span>→</span></button>
-                </form>
-                <div class="help">Precisa de ajuda? <a href="mailto:comissao@formapay.com">Fale com a comissão</a></div>
-            </div>
-        </section>
-    </main>
-    <script>document.querySelector('.toggle-password')?.addEventListener('click', e => { const input = document.querySelector('#senha'); const visible = input.type === 'password'; input.type = visible ? 'text' : 'password'; e.currentTarget.setAttribute('aria-label', visible ? 'Ocultar senha' : 'Mostrar senha'); }); const photoInput = document.getElementById('foto_perfil'); photoInput?.addEventListener('change', () => { const file = photoInput.files[0], box = document.getElementById('photo-preview'); if (!file) { box.hidden = true; return } if (!file.type.startsWith('image/')) return; const reader = new FileReader(); reader.onload = () => { box.querySelector('img').src = reader.result; box.hidden = false }; reader.readAsDataURL(file) });</script>
 </body>
-
 </html>

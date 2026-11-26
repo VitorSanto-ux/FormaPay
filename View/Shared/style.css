@@ -6,7 +6,9 @@
   background: #fff;
   font-synthesis: none;
 }
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 body {
@@ -67,6 +69,22 @@ body {
   gap: 12px;
   position: relative;
   z-index: 1;
+}
+.logo {
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.logo img {
+  display: block;
+  width: 50px;
+  height: 50px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 5px #160b2480);
 }
 .brand-icon {
   width: 39px;
@@ -3170,4 +3188,109 @@ td small {
 /* Logomarca FormaPay nos cabecalhos do sistema */
 .dash-brand .dash-logo-img{display:block;width:48px;height:48px;object-fit:contain;flex:none;background:transparent;border-radius:0}.sidebar .dash-brand .dash-logo-img{width:46px;height:46px}@media(max-width:700px){.portal-header .dash-brand .dash-logo-img{width:42px;height:42px}}
 /* Logo nas telas de entrada e cadastro */
-.brand-image{display:block;width:54px;height:54px;object-fit:contain;flex:none}@media(max-width:800px){.brand-image{width:48px;height:48px}}
+.brand-image{display:block;width:68px;height:68px;object-fit:contain;flex:none}@media(max-width:800px){.brand-image{width:58px;height:58px}}
+
+/* Complementos multi-turma, onboarding, codigo de convite e acoes de tabela */
+.fp-shell-wrap {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 32px 24px 56px;
+}
+.fp-code-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: #f3ebff;
+  border: 1px solid #dfd0fa;
+  color: #6826c8;
+  font-weight: 700;
+  font-size: calc(var(--font-scale) * 10px);
+  letter-spacing: 0.6px;
+}
+.fp-btn-secondary {
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid #ded5e5;
+  border-radius: 8px;
+  background: #fff;
+  color: #5d5267;
+  font: inherit;
+  font-size: calc(var(--font-scale) * 9px);
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.fp-btn-secondary:hover {
+  background: #f7f3fc;
+  border-color: #c8b6e6;
+  color: #702bd5;
+}
+.fp-btn-danger-sm {
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid #f4c7c7;
+  border-radius: 7px;
+  background: #fff5f5;
+  color: #b42318;
+  font: inherit;
+  font-size: calc(var(--font-scale) * 8px);
+  font-weight: 700;
+  cursor: pointer;
+}
+.fp-btn-danger-sm:hover {
+  background: #fee4e2;
+}
+.fp-form-stack {
+  display: grid;
+  gap: 14px;
+}
+.fp-form-stack label {
+  display: grid;
+  gap: 6px;
+  font-size: calc(var(--font-scale) * 10px);
+  font-weight: 600;
+  color: #5d5267;
+}
+.fp-form-stack input[type="text"],
+.fp-form-stack input[type="email"],
+.fp-form-stack input[type="password"],
+.fp-form-stack input[type="number"],
+.fp-form-stack input[type="date"],
+.fp-form-stack select,
+.fp-form-stack textarea {
+  width: 100%;
+  border: 1px solid #ded5e5;
+  border-radius: 9px;
+  padding: 10px 12px;
+  background: #fff;
+  color: #24172d;
+  font: inherit;
+  font-size: calc(var(--font-scale) * 11px);
+}
+.fp-form-stack input:focus,
+.fp-form-stack select:focus,
+.fp-form-stack textarea:focus {
+  outline: 3px solid #8538ed22;
+  border-color: #8538ed;
+}
+.fp-form-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.fp-form-span-2 {
+  grid-column: 1 / -1;
+}
+@media (max-width: 720px) {
+  .fp-form-grid-2 {
+    grid-template-columns: 1fr;
+  }
+  .fp-shell-wrap {
+    padding: 20px 14px 40px;
+  }
+}

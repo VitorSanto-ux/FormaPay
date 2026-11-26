@@ -1,26 +1,44 @@
 <?php
 declare(strict_types=1);
 
+namespace FormaPay\DB;
+
+use PDO;
+use PDOException;
+use RuntimeException;
+
 class Database
 {
-    public static function conectar(): PDO
+    private static ?PDO $instance = null;
+
+    public static function getConnection(): PDO
     {
+        if (self::$instance instanceof PDO) {
+            return self::$instance;
+        }
+
         $host = getenv('DB_HOST') ?: '127.0.0.1';
-        $nome = getenv('DB_NAME') ?: 'formapay';
-        $usuario = getenv('DB_USER') ?: 'root';
-        $senha = getenv('DB_PASS') ?: '';
-        $pdo = new PDO("mysql:host={$host};dbname={$nome};charset=utf8mb4", $usuario, $senha, [
+        $port = getenv('DB_PORT') ?: '3306';
+        $dbName = getenv('DB_NAME') ?: 'formapay';
+        $username = getenv('DB_USER') ?: 'root';
+        $password = getenv('DB_PASS') ?: '';
+        $charset = 'utf8mb4';
+
+        $dsn = sprintf('mysql:host=%s;port=%s;dbname=%s;charset=%s', $host, $port, $dbName, $charset);
+
+        $options = [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_EMULATE_PREPARES => false,
-        ]);
-        $coluna = $pdo->query("SHOW COLUMNS FROM usuarios LIKE 'perfil'")->fetch();
-        if (!$coluna) {
-            $pdo->exec("ALTER TABLE usuarios ADD perfil ENUM('comissao','participante') NOT NULL DEFAULT 'comissao'");
+            PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci",
+        ];
+
+        try {
+            self::$instance = new PDO($dsn, $username, $password, $options);
+            return self::$instance;
+        } catch (PDOException $e) {
+            error_log('Erro de conexão PDO no FormaPay: ' . $e->getMessage());
+            throw new RuntimeException('Não foi possível conectar ao banco de dados no momento.');
         }
-        if (!$pdo->query("SHOW COLUMNS FROM usuarios LIKE 'foto_perfil'")->fetch()) {
-            $pdo->exec('ALTER TABLE usuarios ADD foto_perfil VARCHAR(255) NULL');
-        }
-        return $pdo;
     }
 }

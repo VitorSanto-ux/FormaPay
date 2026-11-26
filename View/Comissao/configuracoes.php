@@ -1,72 +1,140 @@
-<?php $iniciais = strtoupper(substr($usuarioAtual['nome'], 0, 1)); ?>
-<!doctype html>
-<html lang="pt-BR">
+<?php
+$progresso = (float) ($resumoFinanceiro['progresso_percentual'] ?? 0);
+$metaValor = (float) ($resumoFinanceiro['meta'] ?? 0);
+$saldoValor = (float) ($resumoFinanceiro['saldo_atual'] ?? 0);
+?>
+<div class="dashboard">
+    <aside class="sidebar">
+        <a href="?rota=comissao_dashboard" class="dash-brand">
+            <img src="View/Shared/logo-formapay.png" alt="FormaPay" class="dash-logo-img">
+            <span>
+                <b>Forma<span>Pay</span></b>
+                <small>COMISSÃO DE FORMATURA</small>
+            </span>
+        </a>
 
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>Configurações | FormaPay</title>
-    <link rel="stylesheet" href="/FormaPay/View/Shared/style.css?v=17">
-</head>
+        <p class="side-caption">TURMA ATIVA</p>
+        <div class="cohort">
+            <b>🎓</b>
+            <span>
+                <strong><?= e($coorteAtual['nome'] ?? '') ?></strong>
+                <small>Código: <?= e($coorteAtual['codigo_convite'] ?? '') ?></small>
+            </span>
+        </div>
 
-<body class="dashboard">
-    <aside class="sidebar"><a class="dash-brand" href="?pagina=dashboard"><img class="dash-logo-img" src="/FormaPay/View/Shared/logo-formapay.png" alt=""><span><b>Forma<span>Pay</span></b><small>FORMATURA EM DIA</small></span></a>
-        <div class="side-caption">ESPAÇO DA TURMA</div><button
-            class="cohort"><b>26</b><span><strong><?= e($coorteAtual['nome']) ?></strong><small>Coorte
-                    ativa</small></span><span>⌄</span></button>
-        <div class="side-caption">GESTÃO</div>
-        <nav class="side-nav"><a href="?pagina=dashboard"><i>▦</i>Visão geral</a><a
-                href="?pagina=movimentacoes"><i>▣</i>Movimentações</a><a
-                href="?pagina=participantes"><i>♙</i>Participantes</a><a href="?pagina=relatorios"><i>▤</i>Prestação de
-                contas</a></nav>
-        <div class="side-caption">CONFIGURAÇÕES</div>
-        <nav class="side-nav"><a class="selected" href="?pagina=configuracoes"><i>⚙</i>Configurações</a></nav>
-        <div class="profile"><span
-                class="avatar"><?= e($iniciais) ?></span><span><b><?= e($usuarioAtual['nome']) ?></b><small>Comissão</small></span>
+        <nav class="side-nav">
+            <a href="?rota=comissao_dashboard"><i>◈</i> Visão Geral</a>
+            <a href="?rota=comissao_movimentacoes"><i>⇄</i> Movimentações</a>
+            <a href="?rota=comissao_participantes"><i>☺</i> Participantes <em><?= (int) ($resumoFinanceiro['total_participantes'] ?? 0) ?></em></a>
+            <a href="?rota=comissao_relatorios"><i>▤</i> Relatórios</a>
+            <a href="?rota=comissao_configuracoes" class="selected"><i>⚙</i> Configurações</a>
+            <a href="?rota=comissao_onboarding"><i>+</i> Nova Turma</a>
+        </nav>
+
+        <div class="goal-mini">
+            <b>Meta da Turma (<?= e((string) $progresso) ?>%)</b>
+            <p><?= e(moeda($saldoValor)) ?> de <?= e(moeda($metaValor)) ?></p>
+            <div class="mini-track"><i style="width: <?= min(100, max(0, $progresso)) ?>%;"></i></div>
+        </div>
+
+        <div class="profile">
+            <span class="avatar"><?= e(iniciais((string) ($_SESSION['usuario_nome'] ?? 'CM'))) ?></span>
+            <span>
+                <b><?= e($_SESSION['usuario_nome'] ?? '') ?></b>
+                <small>Comissão</small>
+            </span>
+            <form method="POST" action="?rota=logout">
+                <?= csrf_field() ?>
+                <button type="submit" title="Sair">⎋</button>
+            </form>
         </div>
     </aside>
-    <header class="topbar"></header>
+
+    <header class="topbar">
+        <div class="search">
+            <span>⌕</span>
+            <input type="text" readonly value="Configurações da turma — <?= e($coorteAtual['nome'] ?? '') ?>">
+        </div>
+        <div class="top-right">
+            <span class="fp-code-pill">Código: <?= e($coorteAtual['codigo_convite'] ?? '') ?></span>
+            <div class="top-divider"></div>
+            <a href="?rota=usuario_editar" class="fp-btn-secondary">Minha Conta</a>
+        </div>
+    </header>
+
     <main class="dash-main settings-main">
-        <p class="eyebrow">SISTEMA</p>
-        <h1>Configurações</h1>
-        <p class="settings-intro">Atualize os dados da turma e seu perfil.</p>
-        <?php if (isset($_GET['salvo']) || isset($_GET['perfil'])): ?>
-            <div class="notice success">Alterações salvas com sucesso.</div><?php endif ?>
+        <?php if (!empty($flashSucesso)): ?>
+            <div class="notice success"><?= e($flashSucesso) ?></div>
+        <?php endif; ?>
+        <?php if (!empty($flashErro)): ?>
+            <div class="notice error"><?= e($flashErro) ?></div>
+        <?php endif; ?>
+
+        <h1>Configurações da Turma</h1>
+        <p class="settings-intro">Ajuste o nome da turma, a meta financeira, o vencimento e o código de convite dos participantes.</p>
+
         <div class="settings-grid">
             <section class="panel settings-card">
-                <h2>Dados da coorte</h2>
-                <p>Identificação e regras gerais de contribuição.</p>
-                <form method="post"><input type="hidden" name="csrf" value="<?= e($_SESSION['csrf']) ?>"><input
-                        type="hidden" name="acao" value="salvar_coorte"><label>Nome da turma<input name="nome"
-                            value="<?= e($coorteAtual['nome']) ?>" required></label><label>Meta da formatura (R$)<input
-                            name="meta" type="number" min="1" step="0.01" value="<?= e((string) $coorteAtual['meta']) ?>"
-                            required></label><label>Dia de vencimento mensal<input name="vencimento_dia" type="number"
-                            min="1" max="28" value="<?= (int) $coorteAtual['vencimento_dia'] ?>" required></label><button
-                        class="primary-action">Salvar coorte</button></form>
-                <div class="years-list"><b>Histórico escolar associado</b><span>2º ano · 2025</span><span>3º ano ·
-                        2026</span></div>
-            </section>
-            <section class="panel settings-card">
-                <h2>Meu perfil</h2>
-                <p>Dados da conta da comissão.</p>
-                <form method="post" enctype="multipart/form-data"><input type="hidden" name="csrf"
-                        value="<?= e($_SESSION['csrf']) ?>"><input type="hidden" name="acao" value="salvar_perfil">
-                    <div class="profile-preview"><?php if (!empty($usuarioAtual['foto_perfil'])): ?><img
-                                src="<?= e($usuarioAtual['foto_perfil']) ?>" alt="Foto atual"><?php else: ?><span
-                                class="avatar"><?= e($iniciais) ?></span><?php endif ?><span>Foto atual · JPG, PNG ou WEBP
-                            até 2 MB</span></div>
-                    <div class="upload-preview" id="photo-preview" hidden><img alt="Prévia da nova foto"><span>Prévia da
-                            nova foto</span></div><label>Nome completo<input name="nome"
-                            value="<?= e($usuarioAtual['nome']) ?>" required maxlength="120"></label><label>E-mail<input
-                            name="email" type="email" value="<?= e($usuarioAtual['email']) ?>" required
-                            maxlength="190"></label><label>Alterar foto de perfil<input id="foto_perfil"
-                            name="foto_perfil" type="file" accept="image/png,image/jpeg,image/webp"></label><button
-                        class="primary-action">Salvar perfil</button>
+                <h2>Identidade e Meta Financeira</h2>
+                <p>Alterações aplicadas somente à turma <strong><?= e($coorteAtual['nome'] ?? '') ?></strong>.</p>
+
+                <form method="POST" action="?rota=comissao_salvar_config" class="fp-form-stack">
+                    <?= csrf_field() ?>
+
+                    <label>
+                        Nome da turma dos formandos *
+                        <input type="text" name="nome" required minlength="3" value="<?= e($coorteAtual['nome'] ?? '') ?>">
+                    </label>
+
+                    <label>
+                        Meta financeira (R$) *
+                        <input type="text" name="meta" required value="<?= e(number_format($metaValor, 2, '.', '')) ?>">
+                    </label>
+
+                    <label>
+                        Instituição / Curso
+                        <input type="text" name="instituicao_curso" value="<?= e($coorteAtual['instituicao_curso'] ?? '') ?>">
+                    </label>
+
+                    <label>
+                        Ano de formatura
+                        <input type="number" name="ano_formatura" min="2020" max="2050" value="<?= e((string) ($coorteAtual['ano_formatura'] ?? '')) ?>">
+                    </label>
+
+                    <label>
+                        Dia de vencimento padrão (1 a 28)
+                        <input type="number" name="vencimento_dia" min="1" max="28" required value="<?= (int) ($coorteAtual['vencimento_dia'] ?? 10) ?>">
+                    </label>
+
+                    <label style="display:flex;align-items:center;gap:8px;flex-direction:row;">
+                        <input type="checkbox" name="ativa" value="1" <?= !empty($coorteAtual['ativa']) ? 'checked' : '' ?>>
+                        <span>Turma ativa para acesso dos participantes</span>
+                    </label>
+
+                    <button type="submit" class="primary-action">Salvar Configurações da Turma</button>
                 </form>
+            </section>
+
+            <section class="panel settings-card">
+                <h2>Código Único de Convite</h2>
+                <p>Compartilhe este código com os formandos para que entrem na turma correta.</p>
+
+                <div style="padding:14px;border-radius:10px;background:#fbf9ff;border:1px solid #e5d8fb;margin-bottom:14px;">
+                    <small style="display:block;color:#8d8298;margin-bottom:6px;">CÓDIGO ATUAL</small>
+                    <strong style="font-size:20px;letter-spacing:1.2px;color:#6826c8;"><?= e($coorteAtual['codigo_convite'] ?? '') ?></strong>
+                </div>
+
+                <form method="POST" action="?rota=comissao_regenerar_codigo" onsubmit="return confirm('Gerar um novo código invalidará o código anterior para novos ingressos. Continuar?');">
+                    <?= csrf_field() ?>
+                    <button type="submit" class="primary-action">Regenerar Código da Turma</button>
+                </form>
+
+                <div class="years-list">
+                    <div><b>ID da Turma:</b> #<?= (int) ($coorteAtual['id'] ?? 0) ?></div>
+                    <div><b>Participantes vinculados:</b> <?= (int) ($resumoFinanceiro['total_participantes'] ?? 0) ?></div>
+                    <div><b>Total de lançamentos:</b> <?= (int) ($resumoFinanceiro['total_lancamentos'] ?? 0) ?></div>
+                </div>
             </section>
         </div>
     </main>
-    <script>document.getElementById('foto_perfil').addEventListener('change', e => { const file = e.target.files[0], box = document.getElementById('photo-preview'); if (!file) { box.hidden = true; return } const reader = new FileReader(); reader.onload = () => { box.querySelector('img').src = reader.result; box.hidden = false }; reader.readAsDataURL(file) });</script>
-</body>
-
-</html>
+</div>
