@@ -10,7 +10,6 @@
             <?php elseif (($perfil ?? '') === 'participante' && $coorteAtual !== null): ?>
                 <a href="?rota=participante_dashboard" class="portal-back"><span>←</span> Voltar ao Portal</a>
             <?php endif; ?>
-            <a href="?rota=usuario_deletar" class="fp-btn-secondary">Encerramento de Conta</a>
         </div>
     </div>
 
@@ -75,6 +74,9 @@
                 <?php if ($coorteAtual !== null): ?>
                     <div><b>Código da turma:</b> <code><?= e($coorteAtual['codigo_convite'] ?? '') ?></code></div>
                 <?php endif; ?>
+            </div>
+            <div style="margin-top:24px;padding-top:18px;border-top:1px solid #eee8f4;">
+                <a href="?rota=usuario_deletar" class="fp-btn-secondary">Encerramento de Conta</a>
             </div>
         </section>
     </div>

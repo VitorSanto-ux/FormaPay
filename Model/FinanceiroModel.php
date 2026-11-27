@@ -43,7 +43,8 @@ class FinanceiroModel
         float $metaFinanceira,
         int $vencimentoDia = 10,
         ?string $instituicaoCurso = null,
-        ?int $anoFormatura = null
+        ?int $anoFormatura = null,
+        ?string $fotoTurma = null
     ): array {
         $this->db->beginTransaction();
         try {
@@ -51,9 +52,9 @@ class FinanceiroModel
             $diaSeguro = max(1, min(28, $vencimentoDia));
 
             $sqlCoorte = 'INSERT INTO coortes
-                            (nome, instituicao_curso, ano_formatura, meta, vencimento_dia, codigo_convite, ativa, criado_por)
+                            (nome, instituicao_curso, ano_formatura, meta, vencimento_dia, codigo_convite, ativa, criado_por, foto_turma)
                           VALUES
-                            (:nome, :instituicao_curso, :ano_formatura, :meta, :vencimento_dia, :codigo_convite, 1, :criado_por)';
+                            (:nome, :instituicao_curso, :ano_formatura, :meta, :vencimento_dia, :codigo_convite, 1, :criado_por, :foto_turma)';
             $stmtCoorte = $this->db->prepare($sqlCoorte);
             $stmtCoorte->execute([
                 ':nome' => trim($nomeTurma),
@@ -63,6 +64,7 @@ class FinanceiroModel
                 ':vencimento_dia' => $diaSeguro,
                 ':codigo_convite' => $codigoConvite,
                 ':criado_por' => $comissaoUsuarioId,
+                ':foto_turma' => $fotoTurma,
             ]);
 
             $coorteId = (int) $this->db->lastInsertId();
@@ -161,7 +163,7 @@ class FinanceiroModel
 
     public function buscarCoortePorId(int $coorteId): ?array
     {
-        $sql = 'SELECT id, nome, instituicao_curso, ano_formatura, meta, vencimento_dia, codigo_convite, ativa, criado_por, criado_em
+        $sql = 'SELECT id, nome, instituicao_curso, ano_formatura, meta, vencimento_dia, codigo_convite, ativa, criado_por, criado_em, foto_turma
                 FROM coortes
                 WHERE id = :id
                 LIMIT 1';
@@ -170,6 +172,12 @@ class FinanceiroModel
         $row = $stmt->fetch();
 
         return $row ?: null;
+    }
+
+    public function salvarFotoTurma(int $coorteId, ?string $caminho): bool
+    {
+        $stmt=$this->db->prepare('UPDATE coortes SET foto_turma=:foto WHERE id=:id');
+        return $stmt->execute([':foto'=>$caminho,':id'=>$coorteId]);
     }
 
     public function buscarCoortePorCodigo(string $codigoConvite): ?array
@@ -442,17 +450,57 @@ class FinanceiroModel
         }
     }
 
+    public function editarMovimentacao(int $coorteId, int $usuarioId, int $id, string $tipo, ?int $categoriaId, string $descricao, float $valor, string $data, string $meio): bool
+    {
+        if (!in_array($tipo,['receita','despesa'],true) || !in_array($meio,['pix','dinheiro','transferencia','cartao','outro'],true) || $valor<=0 || trim($descricao)==='') return false;
+        $this->db->beginTransaction();
+        try {
+            $q=$this->db->prepare('SELECT * FROM movimentacoes WHERE id=:id AND coorte_id=:coorte AND excluida_em IS NULL FOR UPDATE');
+            $q->execute([':id'=>$id,':coorte'=>$coorteId]); $old=$q->fetch();
+            if (!$old || $old['estorno_de']!==null) { $this->db->rollBack(); return false; }
+            $q=$this->db->prepare('SELECT 1 FROM movimentacoes WHERE estorno_de=:id AND excluida_em IS NULL LIMIT 1'); $q->execute([':id'=>$id]);
+            if ($q->fetchColumn()) { $this->db->rollBack(); return false; }
+            if ($categoriaId!==null) { $q=$this->db->prepare('SELECT 1 FROM categorias_financeiras WHERE id=:categoria AND coorte_id=:coorte AND (tipo=:tipo OR tipo="ambos")'); $q->execute([':categoria'=>$categoriaId,':coorte'=>$coorteId,':tipo'=>$tipo]); if(!$q->fetchColumn()) { $this->db->rollBack(); return false; } }
+            $q=$this->db->prepare('UPDATE movimentacoes SET tipo=:tipo,categoria_id=:categoria,descricao=:descricao,valor=:valor,data_movimento=:data,competencia=:competencia,meio=:meio WHERE id=:id');
+            $q->execute([':tipo'=>$tipo,':categoria'=>$categoriaId,':descricao'=>trim($descricao),':valor'=>number_format($valor,2,'.',''),':data'=>$data,':competencia'=>substr($data,0,7).'-01',':meio'=>$meio,':id'=>$id]);
+            $hist=$this->db->prepare('INSERT INTO historico_movimentacoes (movimentacao_id,usuario_id,acao,detalhes) VALUES (:mov,:usuario,"edicao",:detalhes)');
+            $hist->execute([':mov'=>$id,':usuario'=>$usuarioId,':detalhes'=>json_encode(['antes'=>$old,'depois'=>['tipo'=>$tipo,'categoria_id'=>$categoriaId,'descricao'=>trim($descricao),'valor'=>$valor,'data_movimento'=>$data,'meio'=>$meio]],JSON_UNESCAPED_UNICODE|JSON_PARTIAL_OUTPUT_ON_ERROR)]);
+            $this->db->commit(); return true;
+        } catch (\Throwable $e) { if($this->db->inTransaction())$this->db->rollBack(); throw $e; }
+    }
+
+    public function excluirMovimentacao(int $coorteId, int $usuarioId, int $id): bool
+    {
+        $this->db->beginTransaction();
+        try {
+            $q=$this->db->prepare('SELECT * FROM movimentacoes WHERE id=:id AND coorte_id=:coorte AND excluida_em IS NULL FOR UPDATE');
+            $q->execute([':id'=>$id,':coorte'=>$coorteId]); $old=$q->fetch();
+            if (!$old) { $this->db->rollBack(); return false; }
+            $originalId=$old['estorno_de']!==null?(int)$old['estorno_de']:$id;
+            $q=$this->db->prepare('SELECT * FROM movimentacoes WHERE coorte_id=:coorte AND excluida_em IS NULL AND (id=:original_id OR estorno_de=:estorno_original) FOR UPDATE');
+            $q->execute([':coorte'=>$coorteId,':original_id'=>$originalId,':estorno_original'=>$originalId]); $grupo=$q->fetchAll();
+            if (!$grupo) { $this->db->rollBack(); return false; }
+            $q=$this->db->prepare('UPDATE movimentacoes SET excluida_em=NOW(),excluida_por=:usuario WHERE coorte_id=:coorte AND excluida_em IS NULL AND (id=:original_id OR estorno_de=:estorno_original)');
+            $q->execute([':usuario'=>$usuarioId,':coorte'=>$coorteId,':original_id'=>$originalId,':estorno_original'=>$originalId]);
+            $hist=$this->db->prepare('INSERT INTO historico_movimentacoes (movimentacao_id,usuario_id,acao,detalhes) VALUES (:mov,:usuario,"exclusao",:detalhes)');
+            foreach($grupo as $mov) {
+                $hist->execute([':mov'=>$mov['id'],':usuario'=>$usuarioId,':detalhes'=>json_encode(['movimentacao_excluida'=>$mov,'exclusao_em_grupo'=>count($grupo)>1],JSON_UNESCAPED_UNICODE|JSON_PARTIAL_OUTPUT_ON_ERROR)]);
+            }
+            $this->db->commit(); return true;
+        } catch (\Throwable $e) { if($this->db->inTransaction())$this->db->rollBack(); throw $e; }
+    }
+
     public function listarMovimentacoes(int $coorteId, ?string $tipo = null, ?int $limite = null, ?int $participanteId = null): array
     {
         $sql = 'SELECT m.id, m.coorte_id, m.parcela_id, m.participante_id, m.usuario_id, m.tipo,
                        m.categoria_id, COALESCE(cf.nome, "Geral") AS categoria_nome,
                        m.descricao, m.valor, m.data_movimento, m.competencia, m.meio, m.estorno_de,
                        p.nome AS participante_nome,
-                       EXISTS(SELECT 1 FROM movimentacoes e WHERE e.estorno_de = m.id) AS ja_estornado
+                       EXISTS(SELECT 1 FROM movimentacoes e WHERE e.estorno_de = m.id AND e.excluida_em IS NULL) AS ja_estornado
                 FROM movimentacoes m
                 LEFT JOIN categorias_financeiras cf ON cf.id = m.categoria_id
                 LEFT JOIN participantes p ON p.id = m.participante_id
-                WHERE m.coorte_id = :coorte_id';
+                WHERE m.coorte_id = :coorte_id AND m.excluida_em IS NULL';
         $params = [':coorte_id' => $coorteId];
 
         if ($tipo !== null && in_array($tipo, ['receita', 'despesa'], true)) {
@@ -487,7 +535,7 @@ class FinanceiroModel
                     COALESCE(SUM(CASE WHEN tipo = "despesa" THEN valor ELSE 0 END), 0) AS total_despesas,
                     COUNT(*) AS total_lancamentos
                 FROM movimentacoes
-                WHERE coorte_id = :coorte_id';
+                WHERE coorte_id = :coorte_id AND excluida_em IS NULL';
         $stmt = $this->db->prepare($sql);
         $stmt->execute([':coorte_id' => $coorteId]);
         $totais = $stmt->fetch() ?: ['total_receitas' => 0, 'total_despesas' => 0, 'total_lancamentos' => 0];
@@ -515,6 +563,19 @@ class FinanceiroModel
         ];
     }
 
+    public function obterUltimoIdMovimentacao(int $coorteId): string
+    {
+        $stmt=$this->db->prepare('SELECT SHA2(COALESCE(GROUP_CONCAT(CONCAT(id,":",tipo,":",valor,":",data_movimento,":",COALESCE(categoria_id,0)) ORDER BY id SEPARATOR "|"),""),256) FROM movimentacoes WHERE coorte_id=:coorte AND excluida_em IS NULL');
+        $stmt->execute([':coorte'=>$coorteId]); return (string)$stmt->fetchColumn();
+    }
+
+    public function obterTotalContribuicoesParticipante(int $coorteId, int $participanteId): float
+    {
+        $stmt=$this->db->prepare('SELECT COALESCE(SUM(m.valor),0) FROM movimentacoes m WHERE m.coorte_id=:coorte AND m.participante_id=:participante AND m.tipo="receita" AND m.estorno_de IS NULL AND m.excluida_em IS NULL AND NOT EXISTS (SELECT 1 FROM movimentacoes e WHERE e.estorno_de=m.id AND e.coorte_id=m.coorte_id AND e.excluida_em IS NULL)');
+        $stmt->execute([':coorte'=>$coorteId,':participante'=>$participanteId]);
+        return (float)$stmt->fetchColumn();
+    }
+
     public function obterResumoMensal(int $coorteId, int $quantidadeMeses = 6): array
     {
         $quantidadeMeses = max(1, min(24, $quantidadeMeses));
@@ -526,7 +587,7 @@ class FinanceiroModel
                        COALESCE(SUM(CASE WHEN tipo = "receita" THEN valor ELSE 0 END), 0) AS total_receitas,
                        COALESCE(SUM(CASE WHEN tipo = "despesa" THEN valor ELSE 0 END), 0) AS total_despesas
                 FROM movimentacoes
-                WHERE coorte_id = :coorte_id
+                WHERE coorte_id = :coorte_id AND excluida_em IS NULL
                   AND data_movimento >= :data_inicio
                   AND data_movimento < :data_fim
                 GROUP BY DATE_FORMAT(data_movimento, "%Y-%m")
@@ -546,12 +607,80 @@ class FinanceiroModel
         $sql = 'SELECT COALESCE(cf.nome, "Geral") AS categoria, m.tipo, SUM(m.valor) AS total
                 FROM movimentacoes m
                 LEFT JOIN categorias_financeiras cf ON cf.id = m.categoria_id
-                WHERE m.coorte_id = :coorte_id
+                WHERE m.coorte_id = :coorte_id AND m.excluida_em IS NULL
                 GROUP BY COALESCE(cf.nome, "Geral"), m.tipo
                 ORDER BY total DESC';
         $stmt = $this->db->prepare($sql);
         $stmt->execute([':coorte_id' => $coorteId]);
 
         return $stmt->fetchAll();
+    }
+
+    public function solicitarPagamento(int $coorteId, int $participanteId, float $valor, string $tipo, int $categoriaId, string $descricao, string $meio, string $data, ?string $referencia, ?string $final4, ?string $comprovante): int
+    {
+        $categoriaCheck=$this->db->prepare('SELECT id FROM categorias_financeiras WHERE id=:id AND coorte_id=:coorte AND (tipo=:tipo OR tipo="ambos")');
+        $categoriaCheck->execute([':id'=>$categoriaId, ':coorte'=>$coorteId, ':tipo'=>$tipo]);
+        if (!$categoriaCheck->fetchColumn()) { throw new RuntimeException('Categoria inválida para esta transação.'); }
+        $stmt = $this->db->prepare('INSERT INTO solicitacoes_pagamento (coorte_id, participante_id, valor, tipo, categoria_id, descricao, meio, data_pagamento, referencia, cartao_final4, comprovante) VALUES (:coorte, :participante, :valor, :tipo, :categoria, :descricao, :meio, :data, :referencia, :final4, :comprovante)');
+        $stmt->execute([':coorte'=>$coorteId, ':participante'=>$participanteId, ':valor'=>number_format($valor,2,'.',''), ':tipo'=>$tipo, ':categoria'=>$categoriaId, ':descricao'=>$descricao, ':meio'=>$meio, ':data'=>$data, ':referencia'=>$referencia, ':final4'=>$final4, ':comprovante'=>$comprovante]);
+        $requestId=(int)$this->db->lastInsertId();
+        $notice=$this->db->prepare('INSERT INTO notificacoes (usuario_id,titulo,mensagem,link) SELECT DISTINCT u.id,:titulo,:mensagem,:link FROM usuarios u LEFT JOIN coorte_comissao cc ON cc.usuario_id=u.id AND cc.coorte_id=:coorte_cc JOIN coortes c ON c.id=:coorte WHERE (cc.usuario_id IS NOT NULL OR c.criado_por=u.id)');
+        $mensagemNotificacao=$comprovante!==null
+            ? 'Uma participante enviou um pagamento com comprovante anexado. Abra a fila para conferir o arquivo e analisar a solicitação.'
+            : 'Uma participante enviou um pagamento para aprovação. Abra a fila para analisar a solicitação.';
+        $notice->execute([':titulo'=>'Pagamento para analisar',':mensagem'=>$mensagemNotificacao,':link'=>'?rota=comissao_movimentacoes',':coorte_cc'=>$coorteId,':coorte'=>$coorteId]);
+        return $requestId;
+    }
+
+    public function listarSolicitacoesPagamento(int $coorteId, ?int $participanteId = null): array
+    {
+        $sql = 'SELECT sp.*, p.nome AS participante_nome, cf.nome AS categoria_nome FROM solicitacoes_pagamento sp JOIN participantes p ON p.id=sp.participante_id LEFT JOIN categorias_financeiras cf ON cf.id=sp.categoria_id WHERE sp.coorte_id=:coorte';
+        $params = [':coorte'=>$coorteId];
+        if ($participanteId !== null) { $sql .= ' AND sp.participante_id=:participante'; $params[':participante']=$participanteId; }
+        $sql .= ' ORDER BY (sp.status="pendente") DESC, sp.criado_em DESC';
+        $stmt=$this->db->prepare($sql); $stmt->execute($params); return $stmt->fetchAll();
+    }
+
+    public function salvarDadosRecebimento(int $coorteId, ?string $pix, ?string $banco, ?string $agencia, ?string $conta, ?string $cartaoLink): void
+    {
+        $stmt=$this->db->prepare('UPDATE coortes SET pix_chave=:pix,banco_nome=:banco,banco_agencia=:agencia,banco_conta=:conta,cartao_link=:link WHERE id=:id');
+        $stmt->execute([':pix'=>$pix,':banco'=>$banco,':agencia'=>$agencia,':conta'=>$conta,':link'=>$cartaoLink,':id'=>$coorteId]);
+    }
+
+    public function obterDadosRecebimento(int $coorteId): array
+    {
+        $stmt=$this->db->prepare('SELECT pix_chave,banco_nome,banco_agencia,banco_conta,cartao_link FROM coortes WHERE id=:id');
+        $stmt->execute([':id'=>$coorteId]); return $stmt->fetch() ?: [];
+    }
+
+    public function analisarSolicitacaoPagamento(int $coorteId, int $solicitacaoId, int $revisorId, bool $aprovar): bool
+    {
+        $this->db->beginTransaction();
+        try {
+            $stmt=$this->db->prepare('SELECT * FROM solicitacoes_pagamento WHERE id=:id AND coorte_id=:coorte AND status="pendente" FOR UPDATE');
+            $stmt->execute([':id'=>$solicitacaoId, ':coorte'=>$coorteId]); $row=$stmt->fetch();
+            if (!$row) { $this->db->rollBack(); return false; }
+            if ($aprovar) {
+                $mov=$this->db->prepare('INSERT INTO movimentacoes (coorte_id, participante_id, usuario_id, tipo, categoria_id, descricao, valor, data_movimento, competencia, meio) VALUES (:coorte,:participante,:usuario,:tipo,:categoria,:descricao,:valor,:data,:competencia,:meio)');
+                $mov->execute([':coorte'=>$coorteId, ':participante'=>$row['participante_id'], ':usuario'=>$revisorId, ':tipo'=>$row['tipo'], ':categoria'=>$row['categoria_id'], ':descricao'=>$row['descricao'], ':valor'=>$row['valor'], ':data'=>$row['data_pagamento'], ':competencia'=>substr($row['data_pagamento'],0,7).'-01', ':meio'=>in_array($row['meio'],['pix','transferencia','dinheiro','cartao'],true)?$row['meio']:'outro']);
+            }
+            $upd=$this->db->prepare('UPDATE solicitacoes_pagamento SET status=:status, analisado_por=:revisor, analisado_em=NOW() WHERE id=:id');
+            $upd->execute([':status'=>$aprovar?'aprovada':'rejeitada', ':revisor'=>$revisorId, ':id'=>$solicitacaoId]);
+            $notify=$this->db->prepare('INSERT INTO notificacoes (usuario_id,titulo,mensagem,link) SELECT p.usuario_id,:titulo,:mensagem,:link FROM solicitacoes_pagamento sp JOIN participantes p ON p.id=sp.participante_id WHERE sp.id=:id AND p.usuario_id IS NOT NULL');
+            $notify->execute([':titulo'=>$aprovar?'Pagamento aprovado':'Pagamento recusado',':mensagem'=>$aprovar?'A comissão aprovou sua transação.':'A comissão recusou sua transação. Consulte a solicitação para mais detalhes.',':link'=>'?rota=participante_dashboard',':id'=>$solicitacaoId]);
+            $this->db->commit(); return true;
+        } catch (\Throwable $e) { if($this->db->inTransaction()) $this->db->rollBack(); throw $e; }
+    }
+
+    public function listarNotificacoes(int $usuarioId): array
+    {
+        $stmt=$this->db->prepare('SELECT id,titulo,mensagem,link,lida_em,criada_em FROM notificacoes WHERE usuario_id=:usuario ORDER BY (lida_em IS NULL) DESC, criada_em DESC LIMIT 12');
+        $stmt->execute([':usuario'=>$usuarioId]); return $stmt->fetchAll();
+    }
+
+    public function marcarNotificacoesLidas(int $usuarioId): void
+    {
+        $stmt=$this->db->prepare('UPDATE notificacoes SET lida_em=NOW() WHERE usuario_id=:usuario AND lida_em IS NULL');
+        $stmt->execute([':usuario'=>$usuarioId]);
     }
 }

@@ -6,7 +6,7 @@
                 <strong>Forma<span>Pay</span></strong>
                 <small>GESTÃO DE FORMATURAS</small>
             </div>
-            <span class="secure">Multi-Turma</span>
+            
         </div>
 
         <div class="story-copy">
@@ -16,10 +16,10 @@
         </div>
 
         <footer>
-            <div class="year">FP</div>
+            <div class="logo"><img src="View/Shared/logo-formapay.png" alt="Logo FormaPay"></div>
             <div>
-                <b>Proteção por Código de Turma</b>
-                <small>Nenhum formando cai por engano na formatura de outro curso ou ano</small>
+                <b>FormaPay Multi-Turmas</b>
+                <small>Controle financeiro colaborativo para comissões e formandos</small>
             </div>
         </footer>
     </section>
@@ -67,12 +67,14 @@
                 <div class="field">
                     <span>••</span>
                     <input type="password" id="senha" name="senha" required minlength="6" placeholder="Crie uma senha">
+                    <button type="button" class="toggle-password" data-toggle-password="senha" aria-label="Mostrar senha" aria-pressed="false">Mostrar</button>
                 </div>
 
                 <label for="confirmar_senha">Confirmar senha</label>
                 <div class="field">
                     <span>••</span>
                     <input type="password" id="confirmar_senha" name="confirmar_senha" required minlength="6" placeholder="Repita a senha">
+                    <button type="button" class="toggle-password" data-toggle-password="confirmar_senha" aria-label="Mostrar senha" aria-pressed="false">Mostrar</button>
                 </div>
 
                 <button type="submit" class="button">Criar conta <span>→</span></button>

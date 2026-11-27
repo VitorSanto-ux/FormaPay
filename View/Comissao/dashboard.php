@@ -40,7 +40,7 @@ $escalaGrafico = max(1, $maiorMovimentoMensal);
 
         <p class="side-caption">TURMA ATIVA</p>
         <div class="cohort">
-            <b>🎓</b>
+            <?php if (!empty($coorteAtual['foto_turma'])): ?><img class="cohort-photo" src="<?= e($coorteAtual['foto_turma']) ?>" alt="Foto da turma"><?php else: ?><b>🎓</b><?php endif; ?>
             <span>
                 <strong><?= e($coorteAtual['nome'] ?? '') ?></strong>
                 <small>Código: <?= e($coorteAtual['codigo_convite'] ?? '') ?></small>
@@ -63,7 +63,13 @@ $escalaGrafico = max(1, $maiorMovimentoMensal);
         </div>
 
         <div class="profile">
-            <span class="avatar"><?= e(iniciais((string) ($_SESSION['usuario_nome'] ?? 'CM'))) ?></span>
+            <span class="avatar">
+                <?php if (!empty($_SESSION['foto_perfil'])): ?>
+                    <img src="<?= e($_SESSION['foto_perfil']) ?>" alt="Foto de perfil">
+                <?php else: ?>
+                    <?= e(iniciais((string) ($_SESSION['usuario_nome'] ?? 'CM'))) ?>
+                <?php endif; ?>
+            </span>
             <span>
                 <b><?= e($_SESSION['usuario_nome'] ?? '') ?></b>
                 <small>Comissão</small>
@@ -78,18 +84,19 @@ $escalaGrafico = max(1, $maiorMovimentoMensal);
     <header class="topbar">
         <div class="search">
             <span>⌕</span>
-            <input type="text" readonly value="Código de convite: <?= e($coorteAtual['codigo_convite'] ?? '') ?>">
+            <input type="search" data-page-search placeholder="Pesquisar movimentações..." aria-label="Pesquisar movimentações">
         </div>
         <div class="top-right">
-            <button type="button" class="fp-btn-secondary" onclick="navigator.clipboard?.writeText('<?= e($coorteAtual['codigo_convite'] ?? '') ?>')">
-                Copiar Código: <strong><?= e($coorteAtual['codigo_convite'] ?? '') ?></strong>
+            <?php require __DIR__ . '/../Shared/notifications.php'; ?>
+            <button type="button" class="fp-btn-secondary fp-code-pill copy-code-button" data-copy-code="<?= e($coorteAtual['codigo_convite'] ?? '') ?>" aria-label="Copiar código de convite">
+                <span aria-hidden="true"></span> Copiar código <strong><?= e($coorteAtual['codigo_convite'] ?? '') ?></strong>
             </button>
             <div class="top-divider"></div>
-            <a href="?rota=usuario_editar" class="fp-btn-secondary">Minha Conta</a>
         </div>
     </header>
 
     <main class="dash-main">
+        <?php require __DIR__ . '/../Shared/goal-celebration.php'; ?>
         <?php if (!empty($flashSucesso)): ?>
             <div class="notice success"><?= e($flashSucesso) ?></div>
         <?php endif; ?>
@@ -100,7 +107,14 @@ $escalaGrafico = max(1, $maiorMovimentoMensal);
         <div class="dash-title">
             <div>
                 <p class="eyebrow">PAINEL FINANCEIRO ISOLADO POR TURMA</p>
-                <h1><?= e($coorteAtual['nome'] ?? '') ?> <span>• <?= e((string) ($coorteAtual['ano_formatura'] ?? 'Formatura')) ?></span></h1>
+                <div class="dash-title-name">
+                    <?php if (!empty($coorteAtual['foto_turma'])): ?>
+                        <img class="dash-title-cohort-photo" src="<?= e($coorteAtual['foto_turma']) ?>" alt="Foto da turma" width="44" height="44">
+                    <?php else: ?>
+                        <span class="dash-title-cohort-placeholder" aria-hidden="true">🎓</span>
+                    <?php endif; ?>
+                    <h1><?= e($coorteAtual['nome'] ?? '') ?> <span>• <?= e((string) ($coorteAtual['ano_formatura'] ?? 'Formatura')) ?></span></h1>
+                </div>
                 <p>Compartilhe o código <strong><?= e($coorteAtual['codigo_convite'] ?? '') ?></strong> apenas com os participantes desta turma.</p>
             </div>
             <div class="dash-actions">
@@ -214,6 +228,10 @@ $escalaGrafico = max(1, $maiorMovimentoMensal);
                         <small>Meta</small>
                         <b><?= e(moeda($metaValor)) ?></b>
                     </div>
+                </div>
+                <div class="goal-breakdown" aria-label="Receitas e despesas da turma">
+                    <div class="goal-breakdown-item revenue"><i aria-hidden="true"></i><span>Receitas</span><b><?= e(moeda($receitasValor)) ?></b></div>
+                    <div class="goal-breakdown-item expense"><i aria-hidden="true"></i><span>Despesas</span><b><?= e(moeda($despesasValor)) ?></b></div>
                 </div>
                 <div class="projection">
                     <b>Falta para alcançar a meta: <?= e(moeda((float) ($resumoFinanceiro['falta_meta'] ?? 0))) ?></b>

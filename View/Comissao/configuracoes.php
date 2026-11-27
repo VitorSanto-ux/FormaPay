@@ -15,7 +15,7 @@ $saldoValor = (float) ($resumoFinanceiro['saldo_atual'] ?? 0);
 
         <p class="side-caption">TURMA ATIVA</p>
         <div class="cohort">
-            <b>🎓</b>
+            <?php if (!empty($coorteAtual['foto_turma'])): ?><img class="cohort-photo" src="<?= e($coorteAtual['foto_turma']) ?>" alt="Foto da turma"><?php else: ?><b>🎓</b><?php endif; ?>
             <span>
                 <strong><?= e($coorteAtual['nome'] ?? '') ?></strong>
                 <small>Código: <?= e($coorteAtual['codigo_convite'] ?? '') ?></small>
@@ -38,7 +38,13 @@ $saldoValor = (float) ($resumoFinanceiro['saldo_atual'] ?? 0);
         </div>
 
         <div class="profile">
-            <span class="avatar"><?= e(iniciais((string) ($_SESSION['usuario_nome'] ?? 'CM'))) ?></span>
+            <span class="avatar">
+                <?php if (!empty($_SESSION['foto_perfil'])): ?>
+                    <img src="<?= e($_SESSION['foto_perfil']) ?>" alt="Foto de perfil">
+                <?php else: ?>
+                    <?= e(iniciais((string) ($_SESSION['usuario_nome'] ?? 'CM'))) ?>
+                <?php endif; ?>
+            </span>
             <span>
                 <b><?= e($_SESSION['usuario_nome'] ?? '') ?></b>
                 <small>Comissão</small>
@@ -51,18 +57,16 @@ $saldoValor = (float) ($resumoFinanceiro['saldo_atual'] ?? 0);
     </aside>
 
     <header class="topbar">
-        <div class="search">
-            <span>⌕</span>
-            <input type="text" readonly value="Configurações da turma — <?= e($coorteAtual['nome'] ?? '') ?>">
-        </div>
         <div class="top-right">
-            <span class="fp-code-pill">Código: <?= e($coorteAtual['codigo_convite'] ?? '') ?></span>
+            <?php require __DIR__ . '/../Shared/notifications.php'; ?>
+            <button type="button" class="fp-btn-secondary fp-code-pill copy-code-button" data-copy-code="<?= e($coorteAtual['codigo_convite'] ?? '') ?>" aria-label="Copiar código de convite"><span aria-hidden="true"></span> Copiar código <strong><?= e($coorteAtual['codigo_convite'] ?? '') ?></strong></button>
             <div class="top-divider"></div>
             <a href="?rota=usuario_editar" class="fp-btn-secondary">Minha Conta</a>
         </div>
     </header>
 
     <main class="dash-main settings-main">
+        <?php require __DIR__ . '/../Shared/goal-celebration.php'; ?>
         <?php if (!empty($flashSucesso)): ?>
             <div class="notice success"><?= e($flashSucesso) ?></div>
         <?php endif; ?>
@@ -74,6 +78,19 @@ $saldoValor = (float) ($resumoFinanceiro['saldo_atual'] ?? 0);
         <p class="settings-intro">Ajuste o nome da turma, a meta financeira, o vencimento e o código de convite dos participantes.</p>
 
         <div class="settings-grid">
+            <section class="panel settings-card">
+                <h2>Formas de recebimento</h2>
+                <p>Essas instruções serão exibidas às participantes. Para cartão, informe um link seguro de pagamento externo.</p>
+                <form method="POST" action="?rota=comissao_salvar_recebimento" class="fp-form-stack">
+                    <?= csrf_field() ?>
+                    <label>Chave Pix<input name="pix_chave" maxlength="180" value="<?= e($dadosRecebimento['pix_chave'] ?? '') ?>"></label>
+                    <label>Banco<input name="banco_nome" maxlength="120" value="<?= e($dadosRecebimento['banco_nome'] ?? '') ?>"></label>
+                    <label>Agência<input name="banco_agencia" maxlength="40" value="<?= e($dadosRecebimento['banco_agencia'] ?? '') ?>"></label>
+                    <label>Conta<input name="banco_conta" maxlength="60" value="<?= e($dadosRecebimento['banco_conta'] ?? '') ?>"></label>
+                    <label>Link seguro para pagamento com cartão<input type="url" name="cartao_link" maxlength="255" value="<?= e($dadosRecebimento['cartao_link'] ?? '') ?>" placeholder="https://..."></label>
+                    <button class="primary-action">Salvar formas de recebimento</button>
+                </form>
+            </section>
             <section class="panel settings-card">
                 <h2>Identidade e Meta Financeira</h2>
                 <p>Alterações aplicadas somente à turma <strong><?= e($coorteAtual['nome'] ?? '') ?></strong>.</p>
@@ -113,6 +130,32 @@ $saldoValor = (float) ($resumoFinanceiro['saldo_atual'] ?? 0);
 
                     <button type="submit" class="primary-action">Salvar Configurações da Turma</button>
                 </form>
+            </section>
+
+            <section class="panel settings-card cohort-photo-settings">
+                <h2>Foto da turma</h2>
+                <p>Atualize a imagem exibida nos painéis da comissão e dos participantes.</p>
+                <div class="cohort-photo-preview">
+                    <?php if (!empty($coorteAtual['foto_turma'])): ?>
+                        <img src="<?= e($coorteAtual['foto_turma']) ?>" alt="Foto atual da turma">
+                    <?php else: ?>
+                        <span aria-hidden="true">🎓</span>
+                    <?php endif; ?>
+                    <div><strong><?= e($coorteAtual['nome'] ?? 'Turma') ?></strong><small>Imagem atual da turma</small></div>
+                </div>
+                <form method="POST" enctype="multipart/form-data" action="?rota=comissao_atualizar_foto_turma" class="fp-form-stack">
+                    <?= csrf_field() ?>
+                    <label>Escolher nova foto (JPG, PNG ou WEBP · até 5 MB)
+                        <input type="file" name="foto_turma" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" required>
+                    </label>
+                    <button type="submit" class="primary-action">Salvar foto da turma</button>
+                </form>
+                <?php if (!empty($coorteAtual['foto_turma'])): ?>
+                    <form method="POST" action="?rota=comissao_remover_foto_turma" class="cohort-photo-remove-form" onsubmit="return confirm('Remover a foto atual desta turma?');">
+                        <?= csrf_field() ?>
+                        <button type="submit" class="fp-btn-danger-sm">Excluir foto da turma</button>
+                    </form>
+                <?php endif; ?>
             </section>
 
             <section class="panel settings-card">

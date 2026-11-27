@@ -21,7 +21,7 @@ foreach ($resumoCategorias as $rc) {
 
         <p class="side-caption">TURMA ATIVA</p>
         <div class="cohort">
-            <b>🎓</b>
+            <?php if (!empty($coorteAtual['foto_turma'])): ?><img class="cohort-photo" src="<?= e($coorteAtual['foto_turma']) ?>" alt="Foto da turma"><?php else: ?><b>🎓</b><?php endif; ?>
             <span>
                 <strong><?= e($coorteAtual['nome'] ?? '') ?></strong>
                 <small>Código: <?= e($coorteAtual['codigo_convite'] ?? '') ?></small>
@@ -44,7 +44,13 @@ foreach ($resumoCategorias as $rc) {
         </div>
 
         <div class="profile">
-            <span class="avatar"><?= e(iniciais((string) ($_SESSION['usuario_nome'] ?? 'CM'))) ?></span>
+            <span class="avatar">
+                <?php if (!empty($_SESSION['foto_perfil'])): ?>
+                    <img src="<?= e($_SESSION['foto_perfil']) ?>" alt="Foto de perfil">
+                <?php else: ?>
+                    <?= e(iniciais((string) ($_SESSION['usuario_nome'] ?? 'CM'))) ?>
+                <?php endif; ?>
+            </span>
             <span>
                 <b><?= e($_SESSION['usuario_nome'] ?? '') ?></b>
                 <small>Comissão</small>
@@ -59,16 +65,21 @@ foreach ($resumoCategorias as $rc) {
     <header class="topbar">
         <div class="search">
             <span>⌕</span>
-            <input type="text" readonly value="Consolidado financeiro — <?= e($coorteAtual['nome'] ?? '') ?>">
+            <input type="search" data-page-search placeholder="Pesquisar no relatório..." aria-label="Pesquisar no relatório">
         </div>
         <div class="top-right">
+            <?php require __DIR__ . '/../Shared/notifications.php'; ?>
+            <button type="button" class="fp-btn-secondary fp-code-pill copy-code-button" data-copy-code="<?= e($coorteAtual['codigo_convite'] ?? '') ?>" aria-label="Copiar código de convite">
+                <span aria-hidden="true"></span> Copiar código <strong><?= e($coorteAtual['codigo_convite'] ?? '') ?></strong>
+            </button>
+            <div class="top-divider"></div>
             <button type="button" class="fp-btn-secondary" onclick="window.print()">Imprimir / Salvar PDF</button>
             <div class="top-divider"></div>
-            <a href="?rota=usuario_editar" class="fp-btn-secondary">Minha Conta</a>
         </div>
     </header>
 
     <main class="dash-main">
+        <?php require __DIR__ . '/../Shared/goal-celebration.php'; ?>
         <div class="report-heading">
             <div>
                 <p class="eyebrow">PRESTAÇÃO DE CONTAS POR TURMA</p>

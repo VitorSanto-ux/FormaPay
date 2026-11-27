@@ -17,7 +17,7 @@ $despesasValor = (float) ($resumoFinanceiro['total_despesas'] ?? 0);
 
         <p class="side-caption">TURMA ATIVA</p>
         <div class="cohort">
-            <b>🎓</b>
+            <?php if (!empty($coorteAtual['foto_turma'])): ?><img class="cohort-photo" src="<?= e($coorteAtual['foto_turma']) ?>" alt="Foto da turma"><?php else: ?><b>🎓</b><?php endif; ?>
             <span>
                 <strong><?= e($coorteAtual['nome'] ?? '') ?></strong>
                 <small>Código: <?= e($coorteAtual['codigo_convite'] ?? '') ?></small>
@@ -40,7 +40,13 @@ $despesasValor = (float) ($resumoFinanceiro['total_despesas'] ?? 0);
         </div>
 
         <div class="profile">
-            <span class="avatar"><?= e(iniciais((string) ($_SESSION['usuario_nome'] ?? 'CM'))) ?></span>
+            <span class="avatar">
+                <?php if (!empty($_SESSION['foto_perfil'])): ?>
+                    <img src="<?= e($_SESSION['foto_perfil']) ?>" alt="Foto de perfil">
+                <?php else: ?>
+                    <?= e(iniciais((string) ($_SESSION['usuario_nome'] ?? 'CM'))) ?>
+                <?php endif; ?>
+            </span>
             <span>
                 <b><?= e($_SESSION['usuario_nome'] ?? '') ?></b>
                 <small>Comissão</small>
@@ -55,16 +61,19 @@ $despesasValor = (float) ($resumoFinanceiro['total_despesas'] ?? 0);
     <header class="topbar">
         <div class="search">
             <span>⌕</span>
-            <input type="text" readonly value="Livro-caixa da turma: <?= e($coorteAtual['nome'] ?? '') ?>">
+            <input type="search" data-page-search placeholder="Pesquisar movimentações..." aria-label="Pesquisar movimentações">
         </div>
         <div class="top-right">
-            <span class="fp-code-pill">Código: <?= e($coorteAtual['codigo_convite'] ?? '') ?></span>
+            <?php require __DIR__ . '/../Shared/notifications.php'; ?>
+            <button type="button" class="fp-btn-secondary fp-code-pill copy-code-button" data-copy-code="<?= e($coorteAtual['codigo_convite'] ?? '') ?>" aria-label="Copiar código de convite">
+                <span aria-hidden="true"></span> Copiar código <strong><?= e($coorteAtual['codigo_convite'] ?? '') ?></strong>
+            </button>
             <div class="top-divider"></div>
-            <a href="?rota=usuario_editar" class="fp-btn-secondary">Minha Conta</a>
         </div>
     </header>
 
     <main class="dash-main">
+        <?php require __DIR__ . '/../Shared/goal-celebration.php'; ?>
         <?php if (!empty($flashSucesso)): ?>
             <div class="notice success"><?= e($flashSucesso) ?></div>
         <?php endif; ?>
@@ -179,6 +188,24 @@ $despesasValor = (float) ($resumoFinanceiro['total_despesas'] ?? 0);
             </form>
         </section>
 
+        <section class="panel payment-review-panel">
+            <div class="payment-review-heading"><span class="payment-review-icon">✓</span><div><h2>Pagamentos aguardando aprovação</h2><p>Confira os dados e o comprovante. Apenas pagamentos aprovados entram no saldo.</p></div></div>
+            <div class="payment-review-list">
+            <?php $pendentesPagamento = array_values(array_filter($solicitacoesPagamento ?? [], static fn(array $item): bool => $item['status'] === 'pendente')); ?>
+            <?php if (!$pendentesPagamento): ?><div class="payment-review-empty">Tudo em dia. Não há pagamentos aguardando análise.</div><?php endif; ?>
+            <?php foreach ($pendentesPagamento as $sol): ?>
+                <article class="payment-review-item">
+                    <div class="payment-review-main"><div class="payment-review-person"><strong><?= e($sol['participante_nome']) ?></strong><span><?= e(ucfirst($sol['tipo'])) ?> · <?= e($sol['categoria_nome'] ?? 'Sem categoria') ?></span></div><b class="payment-review-value"><?= e(moeda((float)$sol['valor'])) ?></b></div>
+                    <div class="payment-review-meta"><span><?= e($sol['descricao']) ?></span><span><?= e(strtoupper($sol['meio'])) ?> · <?= e($sol['data_pagamento']) ?></span><?php if ($sol['referencia']): ?><span>Ref. <?= e($sol['referencia']) ?></span><?php endif; ?><?php if ($sol['cartao_final4']): ?><span>Cartão final <?= e($sol['cartao_final4']) ?></span><?php endif; ?><?php if ($sol['comprovante']): ?><a href="<?= e($sol['comprovante']) ?>" target="_blank" rel="noopener">Abrir comprovante ↗</a><?php endif; ?></div>
+                    <form method="POST" action="?rota=comissao_analisar_pagamento" class="payment-review-actions">
+                        <?= csrf_field() ?><input type="hidden" name="solicitacao_id" value="<?= (int)$sol['id'] ?>">
+                        <button name="decisao" value="aprovar" class="primary-action">Aprovar</button>
+                        <button name="decisao" value="rejeitar" class="fp-btn-danger-sm">Rejeitar</button>
+                    </form>
+                </article>
+            <?php endforeach; ?>
+            </div>
+        </section>
         <section class="panel ledger-panel">
             <div class="ledger-head">
                 <div>
@@ -233,13 +260,28 @@ $despesasValor = (float) ($resumoFinanceiro['total_despesas'] ?? 0);
                                     <td><?= e($mov['data_movimento']) ?> • <?= e(strtoupper((string) $mov['meio'])) ?></td>
                                     <td class="<?= $mov['tipo'] === 'receita' ? 'money-in' : 'money-out' ?>">
                                         <?= $mov['tipo'] === 'receita' ? '+' : '-' ?> <?= e(moeda((float) $mov['valor'])) ?>
-                                        <?php if (empty($mov['estorno_de']) && empty($mov['ja_estornado'])): ?>
-                                            <form method="POST" action="?rota=comissao_estornar_movimentacao" style="display:inline-block;margin-left:8px;" onsubmit="return confirm('Registrar estorno auditado deste lançamento?');">
-                                                <?= csrf_field() ?>
-                                                <input type="hidden" name="movimentacao_id" value="<?= (int) $mov['id'] ?>">
-                                                <button type="submit" class="fp-btn-danger-sm">Estornar</button>
-                                            </form>
-                                        <?php endif; ?>
+                                        <?php $podeEditarMovimentacao = empty($mov['estorno_de']) && empty($mov['ja_estornado']); ?>
+                                            <div class="movement-row-actions">
+                                                <?php if ($podeEditarMovimentacao): ?>
+                                                <details class="movement-edit">
+                                                    <summary>Editar</summary>
+                                                    <form method="POST" action="?rota=comissao_editar_movimentacao" class="movement-edit-form">
+                                                        <?= csrf_field() ?><input type="hidden" name="movimentacao_id" value="<?= (int)$mov['id'] ?>">
+                                                        <label>Tipo<select name="tipo" required><option value="receita" <?= $mov['tipo']==='receita'?'selected':'' ?>>Receita</option><option value="despesa" <?= $mov['tipo']==='despesa'?'selected':'' ?>>Despesa</option></select></label>
+                                                        <label>Categoria<select name="categoria_id"><option value="">Sem categoria</option><?php foreach ($categoriasCoorte as $cat): ?><option value="<?= (int)$cat['id'] ?>" <?= (int)$mov['categoria_id']===(int)$cat['id']?'selected':'' ?>><?= e($cat['nome']) ?> (<?= e($cat['tipo']) ?>)</option><?php endforeach; ?></select></label>
+                                                        <label>Descrição<input name="descricao" maxlength="180" required value="<?= e($mov['descricao']) ?>"></label>
+                                                        <label>Valor<input name="valor" inputmode="decimal" required value="<?= e(number_format((float)$mov['valor'],2,'.','')) ?>"></label>
+                                                        <label>Data<input type="date" name="data_movimento" required value="<?= e($mov['data_movimento']) ?>"></label>
+                                                        <label>Meio<select name="meio" required><?php foreach (['pix'=>'PIX','dinheiro'=>'Dinheiro','transferencia'=>'Transferência','cartao'=>'Cartão','outro'=>'Outro'] as $key=>$label): ?><option value="<?= e($key) ?>" <?= $mov['meio']===$key?'selected':'' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
+                                                        <button class="primary-action">Salvar edição</button>
+                                                    </form>
+                                                </details>
+                                                <?php endif; ?>
+                                                <form method="POST" action="?rota=comissao_excluir_movimentacao" onsubmit="return confirm('Excluir este lançamento<?= (!empty($mov['estorno_de']) || !empty($mov['ja_estornado'])) ? ' e o lançamento relacionado ao estorno' : '' ?>? Os registros serão retirados dos saldos e relatórios, mantendo o histórico de auditoria.');">
+                                                    <?= csrf_field() ?><input type="hidden" name="movimentacao_id" value="<?= (int)$mov['id'] ?>">
+                                                    <button type="submit" class="fp-btn-danger-sm">Excluir</button>
+                                                </form>
+                                            </div>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>

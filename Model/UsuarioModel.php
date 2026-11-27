@@ -130,7 +130,7 @@ class UsuarioModel
                        COALESCE(SUM(CASE WHEN m.tipo = "receita" AND m.estorno_de IS NULL THEN m.valor ELSE 0 END), 0) AS total_contribuido
                 FROM participantes p
                 LEFT JOIN usuarios u ON u.id = p.usuario_id
-                LEFT JOIN movimentacoes m ON m.participante_id = p.id AND m.coorte_id = p.coorte_id
+                LEFT JOIN movimentacoes m ON m.participante_id = p.id AND m.coorte_id = p.coorte_id AND m.excluida_em IS NULL
                 WHERE p.coorte_id = :coorte_id
                 GROUP BY p.id, p.coorte_id, p.usuario_id, p.nome, p.email, p.status, p.entrou_em, p.saiu_em, u.foto_perfil
                 ORDER BY p.nome ASC';

@@ -71,6 +71,7 @@
                 <div class="field">
                     <span>••</span>
                     <input type="password" id="senha" name="senha" required autocomplete="current-password" placeholder="Sua senha">
+                    <button type="button" class="toggle-password" data-toggle-password="senha" aria-label="Mostrar senha" aria-pressed="false">Mostrar</button>
                 </div>
 
                 <button type="submit" class="button">Entrar no FormaPay <span>→</span></button>

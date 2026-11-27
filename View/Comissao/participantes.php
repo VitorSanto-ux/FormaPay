@@ -18,7 +18,7 @@ $totalContribuidos = array_reduce($participantesCoorte, static fn(float $acc, ar
 
         <p class="side-caption">TURMA ATIVA</p>
         <div class="cohort">
-            <b>🎓</b>
+            <?php if (!empty($coorteAtual['foto_turma'])): ?><img class="cohort-photo" src="<?= e($coorteAtual['foto_turma']) ?>" alt="Foto da turma"><?php else: ?><b>🎓</b><?php endif; ?>
             <span>
                 <strong><?= e($coorteAtual['nome'] ?? '') ?></strong>
                 <small>Código: <?= e($coorteAtual['codigo_convite'] ?? '') ?></small>
@@ -41,7 +41,13 @@ $totalContribuidos = array_reduce($participantesCoorte, static fn(float $acc, ar
         </div>
 
         <div class="profile">
-            <span class="avatar"><?= e(iniciais((string) ($_SESSION['usuario_nome'] ?? 'CM'))) ?></span>
+            <span class="avatar">
+                <?php if (!empty($_SESSION['foto_perfil'])): ?>
+                    <img src="<?= e($_SESSION['foto_perfil']) ?>" alt="Foto de perfil">
+                <?php else: ?>
+                    <?= e(iniciais((string) ($_SESSION['usuario_nome'] ?? 'CM'))) ?>
+                <?php endif; ?>
+            </span>
             <span>
                 <b><?= e($_SESSION['usuario_nome'] ?? '') ?></b>
                 <small>Comissão</small>
@@ -56,16 +62,19 @@ $totalContribuidos = array_reduce($participantesCoorte, static fn(float $acc, ar
     <header class="topbar">
         <div class="search">
             <span>⌕</span>
-            <input type="text" readonly value="Convite exclusivo da turma: <?= e($coorteAtual['codigo_convite'] ?? '') ?>">
+            <input type="search" data-page-search placeholder="Pesquisar participantes..." aria-label="Pesquisar participantes">
         </div>
         <div class="top-right">
-            <span class="fp-code-pill">Código: <?= e($coorteAtual['codigo_convite'] ?? '') ?></span>
+            <?php require __DIR__ . '/../Shared/notifications.php'; ?>
+            <button type="button" class="fp-btn-secondary fp-code-pill copy-code-button" data-copy-code="<?= e($coorteAtual['codigo_convite'] ?? '') ?>" aria-label="Copiar código de convite">
+                <span aria-hidden="true"></span> Copiar código <strong><?= e($coorteAtual['codigo_convite'] ?? '') ?></strong>
+            </button>
             <div class="top-divider"></div>
-            <a href="?rota=usuario_editar" class="fp-btn-secondary">Minha Conta</a>
         </div>
     </header>
 
     <main class="dash-main">
+        <?php require __DIR__ . '/../Shared/goal-celebration.php'; ?>
         <?php if (!empty($flashSucesso)): ?>
             <div class="notice success"><?= e($flashSucesso) ?></div>
         <?php endif; ?>
@@ -131,7 +140,11 @@ $totalContribuidos = array_reduce($participantesCoorte, static fn(float $acc, ar
                         ?>
                         <article class="participant-card">
                             <div class="participant-card-top">
-                                <span class="participant-initials"><?= e(iniciais((string) ($part['nome'] ?? 'PT'))) ?></span>
+                                <?php if (!empty($part['foto_perfil'])): ?>
+                                    <img class="participant-initials participant-photo" src="<?= e($part['foto_perfil']) ?>" alt="Foto de <?= e($part['nome'] ?? 'participante') ?>">
+                                <?php else: ?>
+                                    <span class="participant-initials"><?= e(iniciais((string) ($part['nome'] ?? 'PT'))) ?></span>
+                                <?php endif; ?>
                                 <span class="status-pill <?= $classePill ?>"><?= e(ucfirst($statusAtual)) ?></span>
                             </div>
 

@@ -16,7 +16,7 @@
         </div>
 
         <footer>
-            <div class="year">FP</div>
+            <div class="logo"><img src="View/Shared/logo-formapay.png" alt="Logo FormaPay"></div>
             <div>
                 <b>Logado como <?= e($_SESSION['usuario_nome'] ?? '') ?></b>
                 <small>Comissão de Formatura</small>
@@ -41,7 +41,7 @@
                 <div class="notice error"><?= e($flashErro) ?></div>
             <?php endif; ?>
 
-            <form method="POST" action="?rota=comissao_criar_turma" class="auth-form">
+            <form method="POST" action="?rota=comissao_criar_turma" enctype="multipart/form-data" class="auth-form">
                 <?= csrf_field() ?>
 
                 <label for="nome">Nome da turma dos formandos *</label>
@@ -61,6 +61,9 @@
                     <span>🏛</span>
                     <input type="text" id="instituicao_curso" name="instituicao_curso" placeholder="Ex.: FEMA - Bacharelado">
                 </div>
+
+                <label for="foto_turma">Foto da turma (opcional · JPG, PNG ou WEBP · até 5 MB)</label>
+                <div class="field file-field"><input type="file" id="foto_turma" name="foto_turma" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"></div>
 
                 <div class="fp-form-grid-2">
                     <div>

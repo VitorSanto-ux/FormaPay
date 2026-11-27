@@ -23,7 +23,8 @@ class FinanceiroController
         string $metaBruta,
         string $vencimentoDiaBruto = '10',
         ?string $instituicaoCurso = null,
-        ?string $anoFormaturaBruto = null
+        ?string $anoFormaturaBruto = null,
+        ?array $arquivoFoto = null
     ): array {
         $nomeLimpo = trim($nomeTurma);
         if (mb_strlen($nomeLimpo) < 3) {
@@ -47,13 +48,27 @@ class FinanceiroController
             $anoFormatura = (int) $ano;
         }
 
+        $fotoSalva = null;
+        if ($arquivoFoto !== null && (int)($arquivoFoto['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+            if ((int)($arquivoFoto['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || (int)($arquivoFoto['size'] ?? 0) > 5*1024*1024) return ['ok'=>false,'erro'=>'A foto da turma deve ter no máximo 5 MB.'];
+            $mime=(new \finfo(FILEINFO_MIME_TYPE))->file($arquivoFoto['tmp_name']);
+            $extensoes=['image/jpeg'=>'jpg','image/png'=>'png','image/webp'=>'webp'];
+            if (!isset($extensoes[$mime])) return ['ok'=>false,'erro'=>'Envie uma foto de turma válida em JPG, PNG ou WEBP.'];
+            $diretorio=dirname(__DIR__).'/uploads/turmas';
+            if (!is_dir($diretorio) && !mkdir($diretorio,0755,true) && !is_dir($diretorio)) return ['ok'=>false,'erro'=>'Não foi possível preparar o armazenamento da foto.'];
+            $nomeArquivo=bin2hex(random_bytes(16)).'.'.$extensoes[$mime];
+            if (!move_uploaded_file($arquivoFoto['tmp_name'],$diretorio.'/'.$nomeArquivo)) return ['ok'=>false,'erro'=>'Não foi possível salvar a foto da turma.'];
+            $fotoSalva='uploads/turmas/'.$nomeArquivo;
+        }
+
         $coorte = $this->financeiroModel->criarCoorte(
             $usuarioId,
             $nomeLimpo,
             $meta,
             $diaVenc,
             $instituicaoCurso,
-            $anoFormatura
+            $anoFormatura,
+            $fotoSalva
         );
 
         $_SESSION['coorte_id'] = (int) $coorte['id'];
